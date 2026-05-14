@@ -1,0 +1,6 @@
+[submodule "assets"]
+	path = assets
+	url = https://huggingface.co/UBTECH-Robotics/challenge2026_assets
+[submodule "challenge2026_assets"]
+	path = challenge2026_assets
+	url = https://huggingface.co/UBTECH-Robotics/challenge2026_assets
