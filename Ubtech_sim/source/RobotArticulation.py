@@ -74,7 +74,8 @@ class RobotArticulation:
             "R_shoulder_yaw_joint": 1.595869459316937,
             "R_wrist_pitch_joint": 0.00048144049606466176,
             "R_wrist_roll_joint": 0.09985407619802703,
-            "head_pitch_joint": -0.600945933438922,
+            # "head_pitch_joint": -0.600945933438922,
+            "head_pitch_joint":-0.785398163,
             "head_yaw_joint": 1.9677590016147396e-07,
         }
         for i, joint_name in enumerate(s2_joint_names):

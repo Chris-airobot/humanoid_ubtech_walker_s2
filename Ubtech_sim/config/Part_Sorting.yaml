@@ -15,13 +15,19 @@ part:
   part_b_assets:
     - "Collected_Part_B_blue/Part_B.usd"
     - "Collected_Part_B_ori_color/Part_B.usd"
-  num_parts: 2  # 每种类别生成的数量
+  num_parts: 2  # fallback, used when num_parts_a / num_parts_b not set
+  num_parts_a: 2  # Part A quantity (overrides num_parts)
+  num_parts_b: 2  # Part B quantity (overrides num_parts)
+  scatter_min_distance: 0.11  
+  scatter_edge_margin_x: 0.025
+  scatter_edge_margin_y: 0.025
+  spawn_z_offset: 0.0
 
 plane:
   plane_position: 
   - [0.75, 0.28, 1.04]
   plane_scale: 
-  - [0.3, 0.25, 0.1] 
+  - [0.35, 0.3, 0.1] 
 
 table:
   table_usd: 'Collected_table_v2/table_v2.usd'
@@ -53,9 +59,6 @@ grasp:
   lift_time: 2.0
   tcp_offset: [0.0, 0.0, 0.0]   # sixforce_link 局部坐标系下 TCP 的偏移 (m)
   ik_rot_weight: 1.0
-  # 物体散布区域 (世界坐标)，确保物体同时位于机器人相机视野和手臂可达范围内
-  # 机器人位于 (0.6, -0.2, 0.958)，朝 +y 方向；桌面 z≈1.0m
-  # x:[0.50, 0.80]  y:[0.10, 0.30]  — 桌面中心、手臂前方、相机正视区
   scatter_area:
     center: [0.75, 0.28, 1.04]   # 散布中心 [x, y, z]
     size:   [0.30, 0.23]         # 散布半宽 x方向, y方向 (m)  →  x:[0.50,0.80] y:[0.10,0.30]
