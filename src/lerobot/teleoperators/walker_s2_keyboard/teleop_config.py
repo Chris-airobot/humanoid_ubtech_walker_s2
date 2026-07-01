@@ -60,7 +60,7 @@ class WalkerS2KeyboardTeleopConfig(TeleoperatorConfig):
     calibration_dir: Path | None = None
 
     # 速度级别列表，与 mobile_manipulator 默认行为保持一致
-    speed_levels: list[float] = field(default_factory=lambda: [0.010, 0.035])
+    speed_levels: list[float] = field(default_factory=lambda: [0.010, 0.035, 0.15])
 
     # 默认速度级别索引（1 表示使用较快速度）
     default_speed_index: int = 0
@@ -95,6 +95,18 @@ class WalkerS2KeyboardTeleopConfig(TeleoperatorConfig):
     # 按键映射字典：将数字键和字母键映射到具体动作
     keymap: dict[str, str] = field(
         default_factory=lambda: {
+            "w": "x_up",
+            "s": "x_down",
+            "a": "y_up",
+            "d": "y_down",
+            "r": "z_up",
+            "f": "z_down",
+            "up": "x_up",
+            "down": "x_down",
+            "left": "y_up",
+            "right": "y_down",
+            "page_up": "z_up",
+            "page_down": "z_down",
             "1": "x_up",
             "3": "x_down",
             "4": "y_up",
@@ -107,6 +119,9 @@ class WalkerS2KeyboardTeleopConfig(TeleoperatorConfig):
             "b": "ry_down",
             "n": "rz_up",
             "m": "rz_down",
+            "2": "hand_power",
+            "5": "hand_pinch",
+            "8": "hand_tripod",
             "k": "gripper_open",
             "l": "gripper_close",
         }
@@ -127,6 +142,9 @@ class WalkerS2KeyboardTeleopConfig(TeleoperatorConfig):
             "ry_down": False,
             "rz_up": False,
             "rz_down": False,
+            "hand_power": False,
+            "hand_pinch": False,
+            "hand_tripod": False,
             "gripper_open": False,
             "gripper_close": False,
             "quit": False,

@@ -168,6 +168,14 @@ class WalkerS2sim(Robot):
         self._go_home = False
         self._num_interpolation_steps = 200
         self._go_home_key_was_pressed = False  # 用于检测按键边缘触发
+        self._last_teleop_input_log_t = 0.0
+        self._teleop_ee_targets: dict[str, Optional[np.ndarray]] = {"left": None, "right": None}
+        grasp_cfg = self.config.task_cfg.get("grasp", {})
+        self._teleop_ik_rot_weight = float(grasp_cfg.get("teleop_ik_rot_weight", 0.1))
+        self._teleop_ik_pos_tol = float(grasp_cfg.get("teleop_ik_pos_tol", 1e-5))
+        self._teleop_ik_rot_tol = float(grasp_cfg.get("teleop_ik_rot_tol", 1e-5))
+        self._teleop_target_max_xyz_step = 0.02
+        self._teleop_target_max_rpy_step = 0.12
 
         # 头部相机可视化
         self._head_visualizer = HeadStereoVisualizer(
@@ -214,8 +222,76 @@ class WalkerS2sim(Robot):
         self._teleop = teleop
         if teleop is not None and hasattr(teleop, "enable_callback_mode"):
             teleop.enable_callback_mode()
+            if self._robot_interface is not None:
+                self._robot_interface._smooth_alpha = 0.98
+                logger.info(
+                    "WalkerS2 keyboard teleop IK tuning: smooth_alpha=%.2f",
+                    self._robot_interface._smooth_alpha,
+                )
         elif teleop is None:
             logger.info("WalkerS2sim teleop detached")
+
+    def _reset_teleop_ee_targets(self) -> None:
+        self._teleop_ee_targets = {"left": None, "right": None}
+
+    def _accumulate_teleop_ee_target(
+        self,
+        side: str,
+        current_pose: np.ndarray,
+        delta: np.ndarray,
+        step_size: float,
+    ) -> np.ndarray:
+        current = np.asarray(current_pose[:6], dtype=np.float64)
+
+        # Match the official baseline keyboard path: target = current EE pose
+        # plus the key delta. Cap only the very large debug speed so IK stays local.
+        bounded_delta = np.asarray(delta, dtype=np.float64).copy()
+        xyz_norm = float(np.linalg.norm(bounded_delta[:3]))
+        if xyz_norm > self._teleop_target_max_xyz_step:
+            bounded_delta[:3] *= self._teleop_target_max_xyz_step / xyz_norm
+
+        bounded_delta[3:] = np.clip(
+            bounded_delta[3:],
+            -self._teleop_target_max_rpy_step,
+            self._teleop_target_max_rpy_step,
+        )
+
+        target = current + bounded_delta
+        self._teleop_ee_targets[side] = target
+        return target.copy()
+
+    @staticmethod
+    def _resolve_urdf_path(urdf_path: str) -> str:
+        import os
+
+        if os.path.isabs(urdf_path) and os.path.isfile(urdf_path):
+            return urdf_path
+
+        env_root = os.environ.get("ZOLLENT_REPO_ROOT")
+        baseline = Path(__file__).resolve().parents[4]
+
+        candidates = []
+        if env_root:
+            candidates.append(Path(env_root) / urdf_path)
+        if Path("/workspace/WalkerS2-Model").is_dir():
+            candidates.append(Path("/workspace") / urdf_path)
+        candidates.extend(
+            [
+                baseline.parent / urdf_path,
+                baseline / urdf_path,
+                Path(urdf_path),
+            ]
+        )
+
+        tried = []
+        for candidate in candidates:
+            tried.append(str(candidate))
+            if candidate.is_file():
+                return str(candidate.resolve())
+
+        raise FileNotFoundError(
+            f"URDF not found: {urdf_path!r} (tried {', '.join(tried)})"
+        )
 
     # --- 必须实现的抽象方法 ---
     @property
@@ -430,21 +506,24 @@ class WalkerS2sim(Robot):
                     self._go_home_key_was_pressed = True
                     self._go_home = not self._go_home
                     if self._go_home:
+                        self._reset_teleop_ee_targets()
                         logger.info("[go_home] 开始插值回到初始位置...")
                     else:
+                        self._reset_teleop_ee_targets()
                         logger.info("[go_home] 取消回到初始位置，恢复正常控制")
             else:
                 self._go_home_key_was_pressed = False
 
-        # 初始化保持目标（仅执行一次，快照当前关节状态）
+        # 初始化保持目标 — use standing arms, never snapshot collapsed sim state.
         if self._hold_arm_positions is None:
-            states = self._robot_interface.get_joint_states()
-            if states:
-                self._hold_arm_positions = np.array(states["arm_positions"], dtype=np.float32)
-                self._hold_finger_positions = np.array(states["finger_positions"], dtype=np.float32)
-                logger.info("[callback] Snapshot initial joint state as hold target")
-            else:
-                return
+            self._hold_arm_positions = np.array(
+                self._robot_interface.arm_joint_initial_positions, dtype=np.float32
+            )
+            self._hold_finger_positions = np.array(
+                self._robot_interface.finger_joint_initial_positions or [0.0] * 4,
+                dtype=np.float32,
+            )
+            logger.info("[callback] Using standing pose arm targets")
 
         # 读取并消费 Inference mode 的 pending action
         with self._callback_lock:
@@ -456,6 +535,7 @@ class WalkerS2sim(Robot):
         if (abs_action is not None) and (not self._go_home):
             # ====== 推理/回放模式：直接使用记录的关节位置 ======
             # action 布局：[0:14]=arm, [14:18]=finger_positions, [18]=left_cmd, [19]=right_cmd
+            self._reset_teleop_ee_targets()
             self._hold_arm_positions = abs_action[:14].copy()
             if abs_action.shape[0] >= 18:
                 self._hold_finger_positions = np.array([self._robot_interface.gripper_open_width]*4)
@@ -464,9 +544,16 @@ class WalkerS2sim(Robot):
                 self._left_gripping = float(abs_action[18]) < -0.5
                 if self._left_gripping:
                     self._hold_finger_positions[:2] = np.array([self._robot_interface.gripper_close_width]*2)
+                    self._robot_interface.close_dexterous_hand("L")
+                else:
+                    self._robot_interface.open_dexterous_hand("L")
                 self._right_gripping = float(abs_action[19]) < -0.5
                 if self._right_gripping:
                     self._hold_finger_positions[2:4] = np.array([self._robot_interface.gripper_close_width]*2)
+                    self._robot_interface.close_dexterous_hand("R")
+                else:
+                    self._robot_interface.open_dexterous_hand("R")
+                self._robot_interface.apply_dexterous_hand_targets()
             print(f"[_robot_control_callback] left_gripping={self._left_gripping}, right_gripping={self._right_gripping}")
         elif not self._go_home:
             # ====== 遥操作模式：通过 teleop 读取键盘状态，计算 IK ======
@@ -475,14 +562,26 @@ class WalkerS2sim(Robot):
                 left_delta, right_delta, left_gripper, right_gripper = self._teleop.get_action_numpy(
                     frame_id=self._send_action_step_idx
                 )
+                keyboard_state = self._teleop.get_keyboard_state()
                 has_left_input = np.linalg.norm(left_delta) > 1e-8
                 has_right_input = np.linalg.norm(right_delta) > 1e-8
+                has_gripper_input = abs(left_gripper) > 0.01 or abs(right_gripper) > 0.01
+                ik_status_debug = ""
+                ik_joint_delta_debug = ""
 
                 if has_left_input or has_right_input:
                     ee_poses = self._robot_interface.get_ee_poses()
                     if ee_poses is not None:
-                        left_target = np.asarray(ee_poses["left"][:6]) + left_delta if has_left_input else None
-                        right_target = np.asarray(ee_poses["right"][:6]) + right_delta if has_right_input else None
+                        left_target = (
+                            self._accumulate_teleop_ee_target("left", ee_poses["left"], left_delta, step_size)
+                            if has_left_input
+                            else None
+                        )
+                        right_target = (
+                            self._accumulate_teleop_ee_target("right", ee_poses["right"], right_delta, step_size)
+                            if has_right_input
+                            else None
+                        )
 
                         ik_result = self._robot_interface.control_dual_arm_ik(
                             step_size=step_size,
@@ -493,10 +592,22 @@ class WalkerS2sim(Robot):
                             sp = ik_result["smoothed_positions"]
                             offset = 0
                             if "left_joint_positions" in ik_result:
-                                self._hold_arm_positions[:7] = np.array(sp[offset:offset+7], dtype=np.float32)
+                                left_sp = np.array(sp[offset:offset+7], dtype=np.float32)
+                                ik_joint_delta_debug += (
+                                    f" Ldq={float(np.linalg.norm(left_sp - self._hold_arm_positions[:7])):.4f}"
+                                )
+                                self._hold_arm_positions[:7] = left_sp
                                 offset += 7
                             if "right_joint_positions" in ik_result:
-                                self._hold_arm_positions[7:14] = np.array(sp[offset:offset+7], dtype=np.float32)
+                                right_sp = np.array(sp[offset:offset+7], dtype=np.float32)
+                                ik_joint_delta_debug += (
+                                    f" Rdq={float(np.linalg.norm(right_sp - self._hold_arm_positions[7:14])):.4f}"
+                                )
+                                self._hold_arm_positions[7:14] = right_sp
+                            ik_status_debug = (
+                                f" ik_ok=({ik_result.get('left_success', None)},"
+                                f"{ik_result.get('right_success', None)})"
+                            )
 
                 # 夹持器控制
                 gripper_step = 0.002
@@ -508,13 +619,77 @@ class WalkerS2sim(Robot):
                         self._hold_finger_positions[:2] - left_gripper * gripper_step, g_lo, g_hi
                     )
                     self._left_gripping = left_gripper < 0
+                    if self._left_gripping:
+                        self._robot_interface.close_dexterous_hand("L")
+                    else:
+                        self._robot_interface.open_dexterous_hand("L")
                 if abs(right_gripper) > 0.01:
                     self._hold_finger_positions[2:4] = np.clip(
                         self._hold_finger_positions[2:4] - right_gripper * gripper_step, g_lo, g_hi
                     )
                     self._right_gripping = right_gripper < 0
+                    if self._right_gripping:
+                        self._robot_interface.close_dexterous_hand("R")
+                    else:
+                        self._robot_interface.open_dexterous_hand("R")
+
+                pose_name = None
+                if keyboard_state.get("hand_power"):
+                    pose_name = "power"
+                elif keyboard_state.get("hand_pinch"):
+                    pose_name = "pinch"
+                elif keyboard_state.get("hand_tripod"):
+                    pose_name = "tripod"
+
+                if pose_name is not None:
+                    target_sides = []
+                    current_arm = getattr(self._teleop, "current_control_arm", "left")
+                    bimanual = bool(getattr(self._teleop, "bimanual_control_enabled", False))
+                    if current_arm == "left" or bimanual:
+                        target_sides.append("L")
+                    if current_arm == "right" or bimanual:
+                        target_sides.append("R")
+                    for side in target_sides:
+                        self._robot_interface.close_dexterous_hand(side, pose_name)
+                        if side == "L":
+                            self._left_gripping = True
+                        else:
+                            self._right_gripping = True
+
+                if has_left_input or has_right_input or has_gripper_input or pose_name is not None:
+                    log_now = _time.perf_counter()
+                    if log_now - self._last_teleop_input_log_t >= 0.5:
+                        self._last_teleop_input_log_t = log_now
+                        ik_debug = ""
+                        if has_left_input or has_right_input:
+                            left_target_error = (
+                                np.linalg.norm(self._teleop_ee_targets["left"][:3] - ee_poses["left"][:3])
+                                if has_left_input and self._teleop_ee_targets.get("left") is not None and ee_poses is not None
+                                else 0.0
+                            )
+                            right_target_error = (
+                                np.linalg.norm(self._teleop_ee_targets["right"][:3] - ee_poses["right"][:3])
+                                if has_right_input and self._teleop_ee_targets.get("right") is not None and ee_poses is not None
+                                else 0.0
+                            )
+                            ik_debug = (
+                                f" target_err=({left_target_error:.4f},{right_target_error:.4f})"
+                                f"{ik_status_debug}{ik_joint_delta_debug}"
+                            )
+                        logger.info(
+                            "[teleop] left_delta=%s right_delta=%s left_gripper=%.1f right_gripper=%.1f pose=%s%s",
+                            np.array2string(left_delta, precision=3, suppress_small=True),
+                            np.array2string(right_delta, precision=3, suppress_small=True),
+                            left_gripper,
+                            right_gripper,
+                            pose_name,
+                            ik_debug,
+                        )
 
         else:
+            self._robot_interface.open_dexterous_hand("L")
+            self._robot_interface.open_dexterous_hand("R")
+            self._robot_interface.apply_dexterous_hand_targets()
             arm_finger_indices = self._robot_interface.arm_joint_indices + self._robot_interface.finger_joint_indices
             if not self._robot_interface.joint_interpolator.interp_active:
                 print('[_robot_control_callback] Starting interpolation to initial position...')
@@ -536,17 +711,31 @@ class WalkerS2sim(Robot):
                 self._go_home = False  
                 all_positions = self._robot_interface.get_joint_states()['all_positions']
                 self._robot_interface.reset_ik(all_positions)  
+                self._reset_teleop_ee_targets()
                 print('[_robot_control_callback] Interpolation to initial position completed.')      
                       
-        # 统一下发保持目标（joint positions 控制）
-        self._robot_interface.set_arm_joint_positions(
-            target_arm_positions=self._hold_arm_positions.tolist(),
-            task_num=self.config.task_cfg.get("task_number", 1)
-        )
-        self._robot_interface.set_body_joint_positions(
-            target_body_positions=0.0,
-            task_num=self.config.task_cfg.get("task_number", 1)
-        )
+        # USD baseline: set_arm + set_body(0) (zero = standing in the asset).
+        # URDF: hold full standing table every step (import_walker_s2_urdf.py pattern).
+        if self._robot_interface.use_explicit_standing_body:
+            joint_targets = self._robot_interface.build_joint_target_vector(
+                self._hold_arm_positions,
+                self._hold_finger_positions if self._robot_interface.has_old_gripper else None,
+            )
+            self._robot_interface.apply_all_joint_targets(joint_targets)
+            self._robot_interface.set_arm_joint_positions_hard(self._hold_arm_positions)
+        else:
+            self._robot_interface.set_arm_joint_positions(
+                target_arm_positions=self._hold_arm_positions.tolist(),
+                task_num=self.config.task_cfg.get("task_number", 1),
+            )
+            self._robot_interface.set_body_joint_positions(
+                target_body_positions=0.0,
+                task_num=self.config.task_cfg.get("task_number", 1),
+            )
+
+        # Keep the dexterous hand visually and physically quiet at idle.
+        # Pose keys update the target; this call holds/interpolates it every frame.
+        self._robot_interface.apply_dexterous_hand_targets()
 
         # 夹持器控制：
         #   夹持时：NaN（关闭PD）+ close_tau（纯力矩），避免位置+力矩叠加导致过夹
@@ -560,32 +749,44 @@ class WalkerS2sim(Robot):
         _states = self._robot_interface.get_joint_states()
         actual_finger_pos = (
             np.array(_states["finger_positions"], dtype=np.float32)
-            if _states is not None
-            else np.array([open_width] * 4, dtype=np.float32)
+            if _states is not None and "finger_positions" in _states
+            else np.array([], dtype=np.float32)
         )
 
-        gripping = [
-            self._left_gripping, self._left_gripping,
-            self._right_gripping, self._right_gripping,
-        ]
-        finger_pos_cmd = []
-        efforts = []
-        for i, is_gripping in enumerate(gripping):
-            if is_gripping:
-                finger_pos_cmd.append(float("nan"))  # 关闭PD，不与力矩叠加
-                efforts.append(close_tau)
-            else:
-                finger_pos_cmd.append(open_width)    # PD 驱动开爪
-                if actual_finger_pos[i] > open_width + stuck_threshold:
-                    efforts.append(open_tau)          # 主动开爪助力（防卡死）
+        has_old_gripper = bool(
+            getattr(self._robot_interface, "has_old_gripper", False)
+            and actual_finger_pos is not None
+            and actual_finger_pos.shape[0] >= 4
+        )
+
+        # The hand-version Walker S2 does not expose the old 4 gripper joints:
+        # L_finger1_joint, L_finger2_joint, R_finger1_joint, R_finger2_joint.
+        # In that case, skip all old gripper control but keep arm control running.
+        if has_old_gripper:
+            gripping = [
+                self._left_gripping, self._left_gripping,
+                self._right_gripping, self._right_gripping,
+            ]
+
+            finger_pos_cmd = []
+            efforts = []
+
+            for i, is_gripping in enumerate(gripping):
+                if is_gripping:
+                    finger_pos_cmd.append(float("nan"))  # 关闭PD，不与力矩叠加
+                    efforts.append(close_tau)
                 else:
-                    efforts.append(0.0)
+                    finger_pos_cmd.append(open_width)    # PD 驱动开爪
+                    if actual_finger_pos[i] > open_width + stuck_threshold:
+                        efforts.append(open_tau)          # 主动开爪助力（防卡死）
+                    else:
+                        efforts.append(0.0)
 
-        self._robot_interface.set_finger_positions(
-            target_fingers=finger_pos_cmd,
-            task_num=self.config.task_cfg.get("task_number", 1)
-        )
-        self._robot_interface.apply_finger_efforts(efforts)
+            self._robot_interface.set_finger_positions(
+                target_fingers=finger_pos_cmd,
+                task_num=self.config.task_cfg.get("task_number", 1),
+            )
+            self._robot_interface.apply_finger_efforts(efforts)
 
     def _score_input_record_callback(self, step_size: float) -> None:
         """记录分数/目标物体变换"""
@@ -715,17 +916,31 @@ class WalkerS2sim(Robot):
             )
             print("步骤 4: SceneBuilder 构建场景...",self.config.task_cfg)
             self._scene_builder = SceneBuilder(self.config.task_cfg, data_logger=data_logger)
-            self._scene_builder.build_all() 
-            self._scene_builder.build_robot()
-            logger.info("SceneBuilder 场景构建完成")
-            
-            # 启动仿真
+            uses_urdf = bool(self.config.task_cfg.get("robot", {}).get("robot_urdf"))
+            settle_time = float(
+                self.config.task_cfg.get("grasp", {}).get("settle_time", 2.0)
+            )
+
+            self._scene_builder.build_all()
+
+            # Official main.py for both USD and URDF: settle scene, pause, then add robot.
             self._world.play()
-            logger.info("World 开始运行")
-            # 预热物理引擎，确保 physics_view 创建完成
-            for i in range(10):
+            settle_steps = max(1, int(settle_time / self._world.get_physics_dt()))
+            for _ in range(settle_steps):
                 self._world.step(render=False)
-            logger.info("物理引擎预热完成（10 步）")
+            logger.info(f"Scene settled ({settle_time}s, {settle_steps} steps)")
+
+            self._world.pause()
+            self._scene_builder.build_robot()
+            logger.info("Robot built (physics paused)")
+
+            if uses_urdf:
+                logger.info("Rebuilding physics view after URDF import...")
+                self._world.reset()
+                if self._world.is_playing():
+                    self._world.pause()
+
+            logger.info("SceneBuilder 场景构建完成")
         except ImportError as e:
             logger.error(f"无法导入 SceneBuilder: {e}")
             raise
@@ -736,37 +951,113 @@ class WalkerS2sim(Robot):
             raise
 
         # 步骤 5: 创建机器人接口（连接到 SceneBuilder 创建的机器人）
-        logger.info(f"步骤 5: 创建机器人接口...")
+        logger.info("步骤 5: 创建机器人接口...")
 
-        actual_prim_path = self.config.prim_path
+        actual_prim_path = self._scene_builder.robot_prim_path or self.config.prim_path
+        self.config.prim_path = actual_prim_path
+        logger.info(f"Robot articulation prim: {actual_prim_path}")
+
+        urdf_path = self._resolve_urdf_path(self.config.urdf_path)
+        uses_urdf = bool(self.config.task_cfg.get("robot", {}).get("robot_urdf"))
 
         self._robot_interface = IsaacSimRobotInterface(
             prim_path=actual_prim_path,
             name=self.config.robot_name,
             world=self._world,
-            urdf_path=self.config.urdf_path,
+            urdf_path=urdf_path,
+            use_explicit_standing_body=uses_urdf,
         )
+
+        logger.info("初始化 Articulation（物理暂停中）...")
         self._robot_interface.initialize()
 
-        # 步骤 5b: 初始化坐标系转换 (after IK solver is ready)
+        if uses_urdf:
+            import omni.kit.app
+
+            for _ in range(5):
+                omni.kit.app.get_app().update()
+
         if self._scene_builder is not None:
             self._scene_builder.init_coordinate_transform(
                 self._robot_interface.ik_solver
             )
             logger.info("Coordinate transform initialized")
 
-        # 步骤 6: 快照当前关节状态作为初始保持目标
-        states = self._robot_interface.get_joint_states()
-        if states:
-            self._hold_arm_positions = np.array(states["arm_positions"], dtype=np.float32)
-            self._hold_finger_positions = np.array(states["finger_positions"], dtype=np.float32)
-            logger.info("快照当前关节状态作为初始保持目标")
+        self._hold_arm_positions = np.array(
+            self._robot_interface.arm_joint_initial_positions, dtype=np.float32
+        )
+        self._hold_finger_positions = np.array(
+            self._robot_interface.finger_joint_initial_positions or [0.0] * 4,
+            dtype=np.float32,
+        )
+        logger.info("Using standing pose as initial hold targets")
 
-        # 步骤 7: 注册回调
+        if uses_urdf:
+            self._robot_interface.apply_all_joint_targets(
+                self._robot_interface.standing_joint_positions
+            )
+
         self._register_world_callbacks()
-        
+
+        self._world.play()
+        logger.info("World started")
+
+        if uses_urdf:
+            # play() resets sim state — re-apply standing before any physics step.
+            self._robot_interface.apply_standing_pose_after_play()
+            self._robot_interface.apply_all_joint_targets(
+                self._robot_interface.standing_joint_positions
+            )
+
+        settle_time = float(
+            self.config.task_cfg.get("grasp", {}).get("settle_time", 2.0)
+        )
+        if uses_urdf:
+            settle_steps = max(1, int(settle_time / self._world.get_physics_dt()))
+            for _ in range(settle_steps):
+                self._robot_interface.apply_all_joint_targets(
+                    self._robot_interface.standing_joint_positions
+                )
+                self._world.step(render=False)
+            logger.info(f"Scene settled with robot ({settle_time}s, {settle_steps} steps)")
+        else:
+            for _ in range(10):
+                self._world.step(render=False)
+            logger.info("Physics warmup complete (10 steps)")
 
         logger.info(f"连接成功！正在控制 {len(self._robot_interface.arm_joint_indices)} 个手臂关节")
+
+    def sim_is_running(self) -> bool:
+        """Return False when the Isaac Sim app has exited (window closed or crash)."""
+        if self._kit is None:
+            return self.is_connected
+        if hasattr(self._kit, "is_running"):
+            return bool(self._kit.is_running())
+        return self.is_connected
+
+    def pump_simulation(self, render: bool = True) -> bool:
+        """Advance Isaac Sim during blocking waits (Enter prompt, etc.).
+
+        Uses world.step() so physics callbacks keep holding the robot pose.
+        Returns False if the SimulationApp is no longer running.
+        """
+        if not self.is_connected:
+            return False
+        if not self.sim_is_running():
+            logger.error("Isaac Sim exited unexpectedly (kit.is_running()=False)")
+            return False
+        try:
+            if self._world is not None:
+                self._world.step(render=render)
+            elif self._kit is not None:
+                self._kit.update()
+        except Exception:
+            logger.exception("pump_simulation failed")
+            raise
+        if not self.sim_is_running():
+            logger.error("Isaac Sim stopped during pump_simulation")
+            return False
+        return True
 
     def disconnect(self) -> None:
         """断开连接并清理资源
@@ -1135,6 +1426,7 @@ class WalkerS2sim(Robot):
         self._right_gripping = False
         self._go_home = False  # 重置回家标志
         self._go_home_key_was_pressed = False  # 重置回家按键状态
+        self._reset_teleop_ee_targets()
 
         # 8. 重新快照 joint states 作为保持目标
         states = self._robot_interface.get_joint_states()

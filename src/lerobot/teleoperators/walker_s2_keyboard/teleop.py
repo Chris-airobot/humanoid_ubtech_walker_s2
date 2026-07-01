@@ -5,8 +5,12 @@ Walker S2 键盘遥操作 - LeRobot 0.5.1 实现
 
 import collections
 import logging
+import os
 import select
+import sys
+import termios
 import threading
+import tty
 from typing import Any, Callable, Optional
 
 import numpy as np
@@ -56,6 +60,8 @@ class EvdevKeyboardListener:
         75: "4", 76: "5", 77: "6",
         78: "+",
         79: "1", 80: "2", 81: "3", 82: "0", 83: ".",
+        103: "up", 104: "page_up", 105: "left", 106: "right",
+        108: "down", 109: "page_down",
     }
 
     def __init__(
@@ -238,6 +244,8 @@ class WalkerS2KeyboardTeleop(Teleoperator):
         self._current_frame_keys: Optional[dict[str, bool]] = None
         self._last_keyboard_frame_id: int = -1
         self._callback_mode: bool = False
+        self._terminal_polling_enabled: bool = False
+        self._terminal_original_attrs: Optional[list[Any]] = None
 
         self._go_home_key_was_pressed: bool = False
 
@@ -299,21 +307,147 @@ class WalkerS2KeyboardTeleop(Teleoperator):
 
     @check_if_not_connected
     def disconnect(self) -> None:
+        self.disable_terminal_polling()
         if self._keyboard_listener:
             if hasattr(self._keyboard_listener, "stop"):
                 self._keyboard_listener.stop()
             self._keyboard_listener = None
             logger.info("键盘监听已断开")
 
-    def _resolve_key_action(self, char: str | None) -> str | None:
-        if char is None:
+    def _resolve_key_action(self, key_label: str | None) -> str | None:
+        if key_label is None:
             return None
-        return self.config.keymap.get(char.lower())
+        return self.config.keymap.get(key_label.lower())
+
+    def enable_terminal_polling(self) -> None:
+        """Enable direct stdin key polling as a fallback for Isaac/container focus issues."""
+        if self._terminal_polling_enabled:
+            return
+        if not sys.stdin or not sys.stdin.isatty():
+            logger.info("stdin is not a TTY; terminal key fallback disabled")
+            return
+
+        try:
+            fd = sys.stdin.fileno()
+            self._terminal_original_attrs = termios.tcgetattr(fd)
+            tty.setcbreak(fd)
+            self._terminal_polling_enabled = True
+            logger.info("Terminal key fallback enabled (cbreak stdin polling)")
+        except Exception as exc:
+            self._terminal_original_attrs = None
+            self._terminal_polling_enabled = False
+            logger.warning("Terminal key fallback unavailable: %s", exc)
+
+    def disable_terminal_polling(self) -> None:
+        if not self._terminal_polling_enabled:
+            return
+        try:
+            if self._terminal_original_attrs is not None and sys.stdin and sys.stdin.isatty():
+                termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._terminal_original_attrs)
+        except Exception as exc:
+            logger.warning("Failed to restore terminal mode: %s", exc)
+        finally:
+            self._terminal_original_attrs = None
+            self._terminal_polling_enabled = False
+
+    def _enqueue_terminal_key_label(self, key_label: str) -> None:
+        key_label = key_label.lower()
+        go_home_key = str(self.config.go_home_key).lower()
+
+        if key_label == go_home_key:
+            snap = dict(self.config.pressed_keys_template)
+            snap["go_home"] = True
+            self._keyboard_cmd_queue.append(snap)
+            logger.info("terminal key '%s' -> go_home", key_label)
+            return
+
+        if key_label == self.config.toggle_arm_key:
+            self.current_control_arm = (
+                "right" if self.current_control_arm == "left" else "left"
+            )
+            logger.info("切换控制臂：%s", self.current_control_arm)
+            return
+
+        if key_label == self.config.toggle_bimanual_key:
+            self.bimanual_control_enabled = not self.bimanual_control_enabled
+            mode = "双臂同步" if self.bimanual_control_enabled else "单臂"
+            logger.info("控制模式：%s", mode)
+            return
+
+        if key_label in (self.config.speed_up_key, "=", "+"):
+            self._speed_index = min(self._speed_index + 1, len(self.speed_levels) - 1)
+            logger.info("速度：%.3f", self.speed_levels[self._speed_index])
+            return
+
+        if key_label == self.config.speed_down_key:
+            self._speed_index = max(self._speed_index - 1, 0)
+            logger.info("速度：%.3f", self.speed_levels[self._speed_index])
+            return
+
+        if key_label == self.config.quit_key:
+            snap = dict(self.config.pressed_keys_template)
+            snap["quit"] = True
+            self._keyboard_cmd_queue.append(snap)
+            logger.info("terminal key '%s' -> quit", key_label)
+            return
+
+        action_name = self._resolve_key_action(key_label)
+        if not action_name:
+            return
+
+        snap = dict(self.config.pressed_keys_template)
+        snap[action_name] = True
+        self._keyboard_cmd_queue.append(snap)
+        logger.info(
+            "terminal key '%s' -> %s (arm=%s, bimanual=%s, speed=%.3f)",
+            key_label,
+            action_name,
+            self.current_control_arm,
+            self.bimanual_control_enabled,
+            self.speed_levels[self._speed_index],
+        )
+
+    def _poll_terminal_keys(self) -> None:
+        if not self._terminal_polling_enabled or not sys.stdin or not sys.stdin.isatty():
+            return
+
+        try:
+            while True:
+                readable, _, _ = select.select([sys.stdin], [], [], 0)
+                if not readable:
+                    return
+                data = os.read(sys.stdin.fileno(), 16)
+                if not data:
+                    return
+                text = data.decode(errors="ignore")
+                i = 0
+                while i < len(text):
+                    if text.startswith("\x1b[A", i):
+                        self._enqueue_terminal_key_label("up")
+                        i += 3
+                    elif text.startswith("\x1b[B", i):
+                        self._enqueue_terminal_key_label("down")
+                        i += 3
+                    elif text.startswith("\x1b[D", i):
+                        self._enqueue_terminal_key_label("left")
+                        i += 3
+                    elif text.startswith("\x1b[C", i):
+                        self._enqueue_terminal_key_label("right")
+                        i += 3
+                    else:
+                        char = text[i]
+                        if char not in ("\n", "\r", "\t"):
+                            self._enqueue_terminal_key_label(char)
+                        i += 1
+        except Exception as exc:
+            logger.warning("Terminal key polling failed; disabling fallback: %s", exc)
+            self.disable_terminal_polling()
 
     def _on_key_press(self, key) -> bool | None:
         char = getattr(key, "char", None)
         char = char.lower() if char is not None else None
         key_name = getattr(key, "name", None)
+        key_label = char or key_name
 
         go_home_key = str(self.config.go_home_key).lower()
 
@@ -358,9 +492,19 @@ class WalkerS2KeyboardTeleop(Teleoperator):
             logger.info("退出键被按下")
             return False
 
-        action_name = self._resolve_key_action(char)
+        action_name = self._resolve_key_action(key_label)
         if action_name:
+            was_pressed = self._pressed_keys.get(action_name, False)
             self._pressed_keys[action_name] = True
+            if not was_pressed:
+                logger.info(
+                    "teleop key '%s' -> %s (arm=%s, bimanual=%s, speed=%.3f)",
+                    key_label,
+                    action_name,
+                    self.current_control_arm,
+                    self.bimanual_control_enabled,
+                    self.speed_levels[self._speed_index],
+                )
             self._enqueue_keyboard_snapshot()
 
         return None
@@ -369,6 +513,7 @@ class WalkerS2KeyboardTeleop(Teleoperator):
         char = getattr(key, "char", None)
         char = char.lower() if char is not None else None
         key_name = getattr(key, "name", None)
+        key_label = char or key_name
 
         go_home_key = str(self.config.go_home_key).lower()
 
@@ -378,7 +523,7 @@ class WalkerS2KeyboardTeleop(Teleoperator):
             self._enqueue_keyboard_snapshot()
             return
 
-        action_name = self._resolve_key_action(char)
+        action_name = self._resolve_key_action(key_label)
         if action_name:
             self._pressed_keys[action_name] = False
             self._enqueue_keyboard_snapshot()
@@ -454,6 +599,8 @@ class WalkerS2KeyboardTeleop(Teleoperator):
         return action
 
     def get_action_numpy(self, frame_id: int = 0) -> tuple[np.ndarray, np.ndarray, float, float]:
+        self._poll_terminal_keys()
+
         if frame_id != self._last_keyboard_frame_id:
             self._last_keyboard_frame_id = frame_id
 

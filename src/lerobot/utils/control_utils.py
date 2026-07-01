@@ -18,6 +18,8 @@
 
 
 import logging
+import select
+import sys
 import traceback
 from contextlib import nullcontext
 from copy import copy
@@ -62,6 +64,20 @@ def is_headless():
         traceback.print_exc()
         print()
         return True
+
+
+def terminal_enter_pressed() -> bool:
+    """Return True when a line is available on stdin, without blocking Isaac UI updates."""
+    if not sys.stdin or not sys.stdin.isatty():
+        return False
+
+    readable, _, _ = select.select([sys.stdin], [], [], 0)
+    if not readable:
+        return False
+
+    line = sys.stdin.readline()
+    # Pressing Enter yields "" (empty line); do not require non-empty text.
+    return True
 
 
 def predict_action(

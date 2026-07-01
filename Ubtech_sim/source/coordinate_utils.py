@@ -46,66 +46,57 @@ class CoordinateTransform:
         ik_solver,
         torso_prim_path: str = "/Root/Ref_Xform/Ref/torso_link",
     ):
-        """Compute transformation between world and Pinocchio base frames via torso_link anchor point
+        """Compute transformation via torso_link (legacy USD / challenge URDF layout)."""
+        return cls.from_anchor_frame(
+            ik_solver=ik_solver,
+            frame_name="torso_link",
+            frame_prim_path=torso_prim_path,
+        )
 
-        Core logic:
-            1. Read torso_link world pose from Isaac Sim
-            2. Compute torso_link pose in base frame via Pinocchio forward kinematics
-            3. Combine both to solve base pose in world coordinates and generate transformation instance
-
-        Args:
-            ik_solver: Initialized DualArmIK instance (with synced joint states), provides Pinocchio model/data/joint angles (q)
-            torso_prim_path (str, optional): USD prim path of torso_link in Isaac Sim, default="/Root/Ref_Xform/Ref/torso_link"
-
-        Returns:
-            CoordinateTransform: Initialized coordinate transformation instance containing base world pose information
-
-        Raises:
-            AssertionError: If torso_link USD prim path is invalid (link not found)
-        """
+    @classmethod
+    def from_anchor_frame(
+        cls,
+        ik_solver,
+        frame_name: str,
+        frame_prim_path: str,
+    ):
+        """Compute world/base transform using any URDF link present in sim + Pinocchio."""
         from pxr import UsdGeom
         import omni.usd
 
-        # Get Isaac Sim USD stage and transform cache (for efficient repeated queries)
         stage = omni.usd.get_context().get_stage()
         xc = UsdGeom.XformCache()
 
-        # 1) Read torso_link world pose from Isaac Sim
-        torso_prim = stage.GetPrimAtPath(torso_prim_path)
-        assert torso_prim.IsValid(), f"torso_link prim not found at {torso_prim_path}"
-        # Get torso_link local-to-world transformation matrix
-        torso_tf = xc.GetLocalToWorldTransform(torso_prim)
-        # Extract translation (position) component, shape=(3,)
-        torso_t = np.array(torso_tf.ExtractTranslation(), dtype=float)
-        # Extract rotation matrix components and convert to numpy array (adapt to Pinocchio format)
-        torso_R_gf = torso_tf.ExtractRotationMatrix()
-        torso_R = np.array(
-            [[torso_R_gf[i][j] for j in range(3)] for i in range(3)], dtype=float
-        ).T  # Transpose to match Pinocchio's rotation matrix storage format
-        # Construct Pinocchio SE3 pose object (rotation + translation)
-        torso_world = pin.SE3(torso_R, torso_t)
+        frame_prim = stage.GetPrimAtPath(frame_prim_path)
+        if not frame_prim.IsValid():
+            raise AssertionError(
+                f"{frame_name} prim not found at {frame_prim_path}"
+            )
 
-        # 2) Compute torso_link pose in base frame via Pinocchio forward kinematics
-        # Get torso_link Frame ID in Pinocchio model
-        torso_fid = ik_solver.model.getFrameId("torso_link")
-        # Execute forward kinematics computation (based on current joint angles q)
+        frame_tf = xc.GetLocalToWorldTransform(frame_prim)
+        frame_t = np.array(frame_tf.ExtractTranslation(), dtype=float)
+        frame_R_gf = frame_tf.ExtractRotationMatrix()
+        frame_R = np.array(
+            [[frame_R_gf[i][j] for j in range(3)] for i in range(3)], dtype=float
+        ).T
+        frame_world = pin.SE3(frame_R, frame_t)
+
+        if not ik_solver.model.existFrame(frame_name):
+            raise AssertionError(f"{frame_name} not found in Pinocchio model")
+
+        frame_fid = ik_solver.model.getFrameId(frame_name)
         pin.forwardKinematics(ik_solver.model, ik_solver.data, ik_solver.q)
-        # Update all Frame poses (must call, otherwise oMf won't update)
         pin.updateFramePlacements(ik_solver.model, ik_solver.data)
-        # Get torso_link pose in base frame (oMf: operation space to base frame)
-        pin_torso = ik_solver.data.oMf[torso_fid].copy()
+        pin_frame = ik_solver.data.oMf[frame_fid].copy()
 
-        # 3) Solve base pose in world coordinates: base_world = torso_world * inv(pin_torso)
-        base_world = torso_world * pin_torso.inverse()
-        robot_world_R = np.array(base_world.rotation)  # Extract rotation matrix
-        robot_world_pos = np.array(base_world.translation)  # Extract translation
+        base_world = frame_world * pin_frame.inverse()
+        robot_world_R = np.array(base_world.rotation)
+        robot_world_pos = np.array(base_world.translation)
 
-        # Print debug information (for verifying coordinates)
-        print(f"[Coordinate] torso_link world position: {torso_t}")
+        print(f"[Coordinate] {frame_name} world position: {frame_t}")
         print(f"[Coordinate] URDF root world position:  {robot_world_pos}")
         print(f"[Coordinate] base rotation matrix:\n{robot_world_R}")
 
-        # Return initialized coordinate transformation instance
         return cls(robot_world_pos, robot_world_R)
 
     def world_to_robot(self, world_xyz: np.ndarray) -> np.ndarray:

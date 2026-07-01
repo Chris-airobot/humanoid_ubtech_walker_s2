@@ -916,9 +916,230 @@ class SceneBuilder:
             print(f"[SceneBuilder] 已覆盖 {n_updated} 个 FixedJoint — "
                   f"robot 将在 YAML 指定位置 {pos} 生成")
 
+    def _repo_root(self) -> Path:
+        """Directory that contains WalkerS2-Model/ (zollent_technology on host)."""
+        env_root = os.environ.get("ZOLLENT_REPO_ROOT")
+        if env_root:
+            return Path(env_root)
+
+        docker_root = Path("/workspace")
+        if (docker_root / "WalkerS2-Model").is_dir():
+            return docker_root
+
+        baseline = Path(__file__).resolve().parents[2]
+        sibling = baseline.parent / "WalkerS2-Model"
+        if sibling.is_dir():
+            return baseline.parent
+
+        for parent in Path(__file__).resolve().parents:
+            if (parent / "WalkerS2-Model").is_dir():
+                return parent
+
+        return baseline.parent
+
+    def _resolve_robot_urdf_path(self, urdf_cfg_value: str) -> str:
+        if os.path.isabs(urdf_cfg_value) and os.path.isfile(urdf_cfg_value):
+            return urdf_cfg_value
+
+        candidates = [
+            self._repo_root() / urdf_cfg_value,
+            Path(self.root_path) / urdf_cfg_value,
+            Path(__file__).resolve().parents[2] / urdf_cfg_value,
+        ]
+        tried = []
+        for candidate in candidates:
+            tried.append(str(candidate))
+            if candidate.is_file():
+                return str(candidate.resolve())
+
+        raise FileNotFoundError(
+            f"Robot URDF not found: {urdf_cfg_value!r} (tried {', '.join(tried)})"
+        )
+
+    @staticmethod
+    def _robot_xform_path(stage, articulation_root: str) -> str:
+        if articulation_root.endswith("/base_link"):
+            parent = stage.GetPrimAtPath(articulation_root).GetParent()
+            if parent.IsValid() and parent.GetName() not in ("World", ""):
+                return str(parent.GetPath())
+        return articulation_root
+
+    @staticmethod
+    def _apply_prim_world_pose(stage, prim_path: str, position, rotation_deg) -> None:
+        from pxr import Gf, UsdGeom
+
+        prim = stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            raise RuntimeError(f"Robot xform prim not found: {prim_path}")
+
+        roll_deg, pitch_deg, yaw_deg = (float(v) for v in rotation_deg)
+        xformable = UsdGeom.Xformable(prim)
+        xformable.ClearXformOpOrder()
+        xformable.AddTranslateOp().Set(
+            Gf.Vec3d(float(position[0]), float(position[1]), float(position[2]))
+        )
+        # USD xform rotate ops are authored in degrees. The task YAML also stores
+        # robot_rotation in degrees, matching replicator's from_usd rotation API.
+        xformable.AddRotateXYZOp().Set(
+            Gf.Vec3f(
+                roll_deg,
+                pitch_deg,
+                yaw_deg,
+            )
+        )
+
+    @staticmethod
+    def _fix_robot_base_to_world(stage, articulation_root: str) -> str:
+        from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
+
+        if articulation_root.endswith("/base_link"):
+            base_path = articulation_root
+            xform_path = SceneBuilder._robot_xform_path(stage, articulation_root)
+        else:
+            base_path = f"{articulation_root}/base_link"
+            xform_path = articulation_root
+
+        base_prim = stage.GetPrimAtPath(base_path)
+        if not base_prim.IsValid():
+            raise RuntimeError(f"Robot base_link not found: {base_path}")
+
+        fixed_joint_path = f"{xform_path}/world_fixed_joint"
+        existing = stage.GetPrimAtPath(fixed_joint_path)
+        if existing.IsValid():
+            stage.RemovePrim(fixed_joint_path)
+
+        fixed_joint = UsdPhysics.FixedJoint.Define(stage, Sdf.Path(fixed_joint_path))
+        fixed_joint.GetBody1Rel().SetTargets([Sdf.Path(base_path)])
+
+        root_transform = UsdGeom.XformCache(Usd.TimeCode.Default()).GetLocalToWorldTransform(base_prim)
+        root_translation = root_transform.ExtractTranslation()
+        root_quat = root_transform.ExtractRotation().GetQuat()
+        root_quat_imag = root_quat.GetImaginary()
+        fixed_joint.CreateLocalPos0Attr(
+            Gf.Vec3f(
+                float(root_translation[0]),
+                float(root_translation[1]),
+                float(root_translation[2]),
+            )
+        )
+        fixed_joint.CreateLocalRot0Attr(
+            Gf.Quatf(
+                float(root_quat.GetReal()),
+                float(root_quat_imag[0]),
+                float(root_quat_imag[1]),
+                float(root_quat_imag[2]),
+            )
+        )
+        fixed_joint.CreateLocalPos1Attr(Gf.Vec3f(0.0, 0.0, 0.0))
+        fixed_joint.CreateLocalRot1Attr(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+        print(f"[SceneBuilder] Fixed base_link to world via {fixed_joint_path}")
+        return fixed_joint_path
+
+    @staticmethod
+    def _remove_stale_scene_robot_prims(stage) -> None:
+        """Drop embedded robot placeholders from warehouse scenes before URDF import."""
+        stale_paths = (
+            "/walker_s2_official",
+            "/World/walker_s2_official",
+            "/Root/walker_s2_official",
+        )
+        removed = set()
+        for path in stale_paths:
+            prim = stage.GetPrimAtPath(path)
+            if prim.IsValid():
+                stage.RemovePrim(path)
+                removed.add(path)
+                print(f"[SceneBuilder] Removed stale scene robot prim: {path}")
+
+        # Also remove any other top-level walker_s2_official xform the scene may define.
+        for prim in stage.Traverse():
+            if prim.GetName() != "walker_s2_official":
+                continue
+            path = str(prim.GetPath())
+            if path in removed or path.endswith("/base_link"):
+                continue
+            if path.count("/") <= 2:
+                stage.RemovePrim(path)
+                removed.add(path)
+                print(f"[SceneBuilder] Removed stale scene robot prim: {path}")
+
+    def _build_robot_from_urdf(self):
+        """Import official Walker S2 URDF at the YAML spawn pose (fixed base)."""
+        import omni.kit.commands
+        from isaacsim.core.utils.extensions import enable_extension
+        from pxr import Usd
+
+        robot_cfg = self.cfg["robot"]
+        urdf_path = self._resolve_robot_urdf_path(robot_cfg["robot_urdf"])
+        position = robot_cfg["robot_position"]
+        rotation = robot_cfg.get("robot_rotation", [0, 0, 0])
+
+        enable_extension("isaacsim.asset.importer.urdf")
+        try:
+            from isaacsim.asset.importer.urdf import _urdf
+        except ImportError:
+            import isaacsim.asset.importer.urdf as _urdf_mod
+
+            _urdf = _urdf_mod._urdf
+
+        stage = omni.usd.get_context().get_stage()
+        # Warehouse USD already contains /walker_s2_official/* payload slots for the
+        # old bundled robot; URDF import uses the same root name and crashes if kept.
+        self._remove_stale_scene_robot_prims(stage)
+
+        _, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
+        import_config.merge_fixed_joints = False
+        # The official teleop task treats Walker S2 as a fixed-base upper-body
+        # manipulation robot. Let the URDF importer anchor the articulation at
+        # creation time instead of adding a separate world joint after placement.
+        import_config.fix_base = True
+        import_config.import_inertia_tensor = True
+        import_config.self_collision = False
+        import_config.make_default_prim = False
+        import_config.create_physics_scene = False
+        import_config.default_drive_type = _urdf.UrdfJointTargetType.JOINT_DRIVE_POSITION
+        import_config.default_drive_strength = 1e4
+        import_config.default_position_drive_damping = 1e3
+
+        print(f"[SceneBuilder] Importing robot URDF: {urdf_path}")
+        result = omni.kit.commands.execute(
+            "URDFParseAndImportFile",
+            urdf_path=urdf_path,
+            import_config=import_config,
+            dest_path="",
+            get_articulation_root=True,
+        )
+        if isinstance(result, tuple):
+            _, articulation_root = result
+        else:
+            articulation_root = result
+
+        if not articulation_root:
+            raise RuntimeError("URDF import failed (empty articulation root)")
+
+        xform_path = self._robot_xform_path(stage, articulation_root)
+        self._apply_prim_world_pose(stage, xform_path, position, rotation)
+
+        import omni.kit.app
+
+        for _ in range(3):
+            omni.kit.app.get_app().update()
+
+        self.robot_prim_path = articulation_root
+        self.robot_xform_path = xform_path
+        self.robot = None
+        print(
+            f"[SceneBuilder] URDF robot ready: articulation={articulation_root}, "
+            f"xform={xform_path}, pos={position}, rot_deg={rotation}"
+        )
+        return self.robot
+
     def build_robot(self):
         """构建机器人并返回prim路径"""
         robot_cfg = self.cfg['robot']
+        if robot_cfg.get('robot_urdf'):
+            return self._build_robot_from_urdf()
+
         self.robot = rep.create.from_usd(
             self._usd_path(robot_cfg['robot_usd']),
             position=robot_cfg['robot_position'],
@@ -1016,16 +1237,69 @@ class SceneBuilder:
     # Coordinate transform & scene queries (for auto_collect)
     # ------------------------------------------------------------------
 
-    def init_coordinate_transform(self, ik_solver) -> None:
-        """Initialise ``CoordinateTransform`` from the robot's torso link.
+    _COORDINATE_ANCHOR_FRAMES = ("torso_link", "waist_pitch_link", "base_link")
 
-        Must be called after the IK solver is ready (after
-        ``IsaacSimRobotInterface.initialize()``).
-        """
-        self.coordinate_transform = CoordinateTransform.from_torso_link(
-            ik_solver=ik_solver,
-            torso_prim_path="/Root/Ref_Xform/Ref/torso_link",
+    def init_coordinate_transform(self, ik_solver) -> None:
+        """Initialise ``CoordinateTransform`` from a link present in both sim and URDF."""
+        for frame_name in self._COORDINATE_ANCHOR_FRAMES:
+            if not ik_solver.model.existFrame(frame_name):
+                continue
+            prim_path = self._robot_link_prim_path(frame_name)
+            if prim_path is None:
+                continue
+            self.coordinate_transform = CoordinateTransform.from_anchor_frame(
+                ik_solver=ik_solver,
+                frame_name=frame_name,
+                frame_prim_path=prim_path,
+            )
+            print(
+                f"[SceneBuilder] CoordinateTransform anchor: {frame_name} @ {prim_path}"
+            )
+            return
+        print(
+            "[SceneBuilder] Warning: no coordinate anchor frame found; "
+            "CoordinateTransform skipped"
         )
+
+    def _robot_link_prim_path(self, link_name: str) -> str | None:
+        import omni.usd
+
+        stage = omni.usd.get_context().get_stage()
+        root = self.robot_prim_path or "/Root/Ref_Xform/Ref"
+
+        prefixes: list[str] = []
+        if str(root).endswith("/base_link"):
+            parent = str(root).rsplit("/", 1)[0]
+            prefixes.append(parent)
+            if parent.endswith("/root_joint"):
+                prefixes.append(parent.rsplit("/", 1)[0])
+        prefixes.append(str(root))
+        if not str(root).endswith(f"/{link_name}"):
+            prefixes.append(str(root))
+
+        seen: set[str] = set()
+        for prefix in prefixes:
+            if prefix in seen:
+                continue
+            seen.add(prefix)
+            candidate = f"{prefix}/{link_name}"
+            if stage.GetPrimAtPath(candidate).IsValid():
+                return candidate
+
+        for prim in stage.Traverse():
+            if prim.GetName() == link_name:
+                return str(prim.GetPath())
+        return None
+
+    def _robot_torso_prim_path(self) -> str:
+        """Legacy helper for old USD robots with torso_link."""
+        path = self._robot_link_prim_path("torso_link")
+        if path is not None:
+            return path
+        root = self.robot_prim_path or "/Root/Ref_Xform/Ref"
+        if str(root).endswith("/base_link"):
+            return str(root).rsplit("/", 1)[0] + "/torso_link"
+        return f"{root}/torso_link"
     def get_box_positions(self) -> list:
         """返回所有箱子的世界坐标位置。
 

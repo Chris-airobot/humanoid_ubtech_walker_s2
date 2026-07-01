@@ -32,14 +32,45 @@ class DualArmIK:
 
     LEFT_EE_FRAME = "L_sixforce_link"
     RIGHT_EE_FRAME = "R_sixforce_link"
+    LEFT_EE_FRAME_CANDIDATES = (
+        "L_sixforce_link",
+        "L_wrist_roll_link_geom_1",
+        "L_hand_base_link",
+        "L_palm_link",
+    )
+    RIGHT_EE_FRAME_CANDIDATES = (
+        "R_sixforce_link",
+        "R_wrist_roll_link_geom_1",
+        "R_hand_base_link",
+        "R_palm_link",
+    )
+
+    @staticmethod
+    def _resolve_ee_frame(model: pin.Model, candidates: tuple[str, ...], side: str) -> str:
+        for frame_name in candidates:
+            if model.existFrame(frame_name):
+                return frame_name
+        raise ValueError(
+            f"No end-effector frame found for {side} arm. Tried: {', '.join(candidates)}"
+        )
 
     def __init__(self, urdf_path: str):
         self.model = pin.buildModelFromUrdf(urdf_path)
         self.data = self.model.createData()
 
+        self.LEFT_EE_FRAME = self._resolve_ee_frame(
+            self.model, self.LEFT_EE_FRAME_CANDIDATES, "left"
+        )
+        self.RIGHT_EE_FRAME = self._resolve_ee_frame(
+            self.model, self.RIGHT_EE_FRAME_CANDIDATES, "right"
+        )
+
         # 末端执行器 frame ID
         self.left_ee_id = self.model.getFrameId(self.LEFT_EE_FRAME)
         self.right_ee_id = self.model.getFrameId(self.RIGHT_EE_FRAME)
+        print(
+            f"[DualArmIK] EE frames: left={self.LEFT_EE_FRAME}, right={self.RIGHT_EE_FRAME}"
+        )
 
         # 左臂关节在 pinocchio 中的 q-index 和 v-index
         self.left_arm_q_indices = []

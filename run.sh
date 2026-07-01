@@ -154,6 +154,15 @@ DOCKER_ARGS+=(
     -w "${CONTAINER_WORKSPACE}"
 )
 
+# --- 挂载：官方 Walker S2 URDF（与 baseline 同级的 WalkerS2-Model/）---
+WALKER_MODEL_HOST="$(cd "${HOST_WORKSPACE}/.." && pwd)/WalkerS2-Model"
+if [[ -d "${WALKER_MODEL_HOST}" ]]; then
+    DOCKER_ARGS+=(-v "${WALKER_MODEL_HOST}:/workspace/WalkerS2-Model:ro")
+    info "挂载 WalkerS2-Model -> /workspace/WalkerS2-Model"
+else
+    warn "未找到 ${WALKER_MODEL_HOST} — Part Sorting URDF 导入会失败，请先运行 setup_official_walker_s2.py"
+fi
+
 # --- 挂载：Isaac Sim 缓存（大幅加速二次启动）---
 DOCKER_ARGS+=(
     -v "${ISAAC_CACHE_ROOT}/cache/kit:/root/.cache/kit:rw"
@@ -191,13 +200,14 @@ DOCKER_ARGS+=(
     -e "PRIVACY_CONSENT=Y"
     -e XDG_RUNTIME_DIR=/tmp
     -e PYTHONPATH="${CONTAINER_WORKSPACE}"
+    -e PIP_CACHE_DIR="${CONTAINER_WORKSPACE}/.cache/pip"
 )
 
 # ========================== 启动容器 ==========================
 info "启动容器 ${CONTAINER_NAME} ..."
 
 # 容器启动后自动执行：editable install 使宿主机源码修改立即生效
-INIT_CMD='echo "[INIT] 安装本地源码 (editable mode)..." && pip install -e . --no-deps -q 2>/dev/null; exec /bin/bash'
+INIT_CMD="mkdir -p ${CONTAINER_WORKSPACE}/.cache/pip && export PIP_CACHE_DIR=${CONTAINER_WORKSPACE}/.cache/pip && echo \"[INIT] 安装本地源码 (editable mode)...\" && /isaac-sim/python.sh -m pip install -e . --no-deps -q; exec /bin/bash"
 
 echo -e "${CYAN}docker run -it ${DOCKER_ARGS[*]} ${EXTRA_DOCKER_ARGS[*]:-} ${IMAGE_NAME} -c \"${INIT_CMD}\"${NC}"
 echo ""

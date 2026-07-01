@@ -138,6 +138,7 @@ from src.lerobot.utils.control_utils import (
     predict_action,
     sanity_check_dataset_name,
     sanity_check_dataset_robot_compatibility,
+    terminal_enter_pressed,
 )
 from src.lerobot.utils.import_utils import register_third_party_plugins
 from src.lerobot.utils.robot_utils import precise_sleep
@@ -466,6 +467,11 @@ def record_loop(
 def record(cfg: RecordConfig) -> LeRobotDataset:
     init_logging()
     logging.info(pformat(asdict(cfg)))
+    if cfg.dataset.num_episodes <= 0:
+        raise ValueError(f"dataset.num_episodes must be > 0, got {cfg.dataset.num_episodes}")
+    if float(cfg.dataset.episode_time_s) <= 0.0:
+        raise ValueError(f"dataset.episode_time_s must be > 0, got {cfg.dataset.episode_time_s}")
+
     if cfg.display_data:
         init_rerun(session_name="recording", ip=cfg.display_ip, port=cfg.display_port)
     display_compressed_images = (
@@ -478,8 +484,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
     teleop = make_teleoperator_from_config(cfg.teleop) if cfg.teleop is not None else None
 
     if (robot.name == "walkerS2" and teleop is not None):
-        robot.attach_teleop(teleop)
-        logging.info("Attached teleop to walker_s2_sim for callback-driven keyboard control")
+        logging.info("walker_s2_sim will attach teleop after connect")
 
     teleop_action_processor, robot_action_processor, robot_observation_processor = make_default_processors()
 
@@ -556,6 +561,9 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
         robot.connect()
         if teleop is not None:
             teleop.connect()
+        if robot.name == "walkerS2" and teleop is not None:
+            robot.attach_teleop(teleop)
+            logging.info("Attached teleop to walker_s2_sim for callback-driven keyboard control")
 
         listener, events = init_keyboard_listener()
 
@@ -563,12 +571,48 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             logging.info(
                 "Streaming encoding is disabled. If you have capable hardware, consider enabling it for way faster episode saving. --dataset.streaming_encoding=true --dataset.encoder_threads=2 # --dataset.vcodec=auto. More info in the documentation: https://huggingface.co/docs/lerobot/streaming_video_encoding"
             )
-        log_flag = True
+        log_say("调整好按Enter键开始录制...", cfg.play_sounds)
+        logging.info("Waiting for Enter before recording. Press Esc to stop.")
+        wait_t0 = time.perf_counter()
+        last_wait_log_t = wait_t0
         while not events["start_record"]:
-            robot.step(render=True) 
-            if log_flag:
-                log_say("调整好按Enter键开始录制...", cfg.play_sounds)
-                log_flag = False
+            if events["stop_recording"]:
+                logging.info("Stop requested before recording started.")
+                return dataset
+            if terminal_enter_pressed():
+                logging.info("Terminal Enter received; starting recording.")
+                events["start_record"] = True
+                break
+
+            if robot.name == "walkerS2" and hasattr(robot, "pump_simulation"):
+                if not robot.pump_simulation(render=True):
+                    raise RuntimeError(
+                        "Isaac Sim closed while waiting for Enter. "
+                        "Do not close the Isaac window; press Enter in this terminal instead."
+                    )
+            else:
+                kit = getattr(robot, "_kit", None)
+                try:
+                    if kit is not None and hasattr(kit, "update"):
+                        if hasattr(kit, "is_running") and not kit.is_running():
+                            raise RuntimeError("Isaac Sim closed while waiting for Enter.")
+                        kit.update()
+                    else:
+                        robot.step(render=False)
+                except Exception:
+                    logging.exception("Isaac app update failed while waiting for Enter.")
+                    raise
+
+            now = time.perf_counter()
+            if now - last_wait_log_t >= 2.0:
+                logging.info("Still waiting for Enter... %.1fs elapsed", now - wait_t0)
+                last_wait_log_t = now
+
+            precise_sleep(max(1 / cfg.dataset.fps, 0.0))
+
+        logging.info("Enter received; starting recording.")
+        if robot.name == "walkerS2" and teleop is not None and hasattr(teleop, "enable_terminal_polling"):
+            teleop.enable_terminal_polling()
         with VideoEncodingManager(dataset):
             recorded_episodes = 0
             while recorded_episodes < cfg.dataset.num_episodes and not events["stop_recording"]:

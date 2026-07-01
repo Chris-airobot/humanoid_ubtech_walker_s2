@@ -87,6 +87,7 @@ from src.lerobot.teleoperators import (  # noqa: F401
 )
 from src.lerobot.utils.control_utils import (
     init_keyboard_listener,
+    terminal_enter_pressed,
 )   
 from src.lerobot.utils.import_utils import register_third_party_plugins
 from src.lerobot.utils.robot_utils import precise_sleep
@@ -165,7 +166,13 @@ def teleop_loop(
         # Not really needed for now other than for visualization
         # teleop_action_processor can take None as an observation
         # given that it is the identity processor as default
-        obs = robot.get_observation()
+        # Walker S2 keyboard teleop is callback-driven inside Isaac Sim. When
+        # we are not displaying data, full observations mostly mean camera
+        # reads, which throttle the sim loop and make arm motion look jumpy.
+        if robot.name == "walkerS2" and not display_data:
+            obs = {}
+        else:
+            obs = robot.get_observation()
 
         if robot.name == "unitree_g1":
             teleop.send_feedback(obs)
@@ -241,13 +248,47 @@ def teleoperate(cfg: TeleoperateConfig):
         robot.attach_teleop(teleop)
         logging.info("Attached teleop to walker_s2_sim for callback-driven keyboard control")
     listener, events = init_keyboard_listener()
-    log_flag = True
+    log_say("调整好按Enter键开始控制...", play_sounds=False)
+    logging.info("Waiting for Enter before teleoperation. Press Esc to stop.")
+    wait_t0 = time.perf_counter()
+    last_wait_log_t = wait_t0
     while not events["start_record"]:
-        robot.step(render=True) 
-        if log_flag:
-            log_say("调整好按Enter键开始控制...", play_sounds=False)
-            log_flag = False
+        if events["stop_recording"]:
+            logging.info("Stop requested before teleoperation started.")
+            return
+        if terminal_enter_pressed():
+            logging.info("Terminal Enter received; starting teleoperation.")
+            events["start_record"] = True
+            break
+
+        if robot.name == "walkerS2" and hasattr(robot, "pump_simulation"):
+            if not robot.pump_simulation(render=True):
+                raise RuntimeError(
+                    "Isaac Sim closed while waiting for Enter. "
+                    "Do not close the Isaac window; press Enter in this terminal instead."
+                )
+        else:
+            kit = getattr(robot, "_kit", None)
+            try:
+                if kit is not None and hasattr(kit, "update"):
+                    if hasattr(kit, "is_running") and not kit.is_running():
+                        raise RuntimeError("Isaac Sim closed while waiting for Enter.")
+                    kit.update()
+                else:
+                    robot.step(render=False)
+            except Exception:
+                logging.exception("Isaac app update failed while waiting for Enter.")
+                raise
+
+        now = time.perf_counter()
+        if now - last_wait_log_t >= 2.0:
+            logging.info("Still waiting for Enter... %.1fs elapsed", now - wait_t0)
+            last_wait_log_t = now
+
+        precise_sleep(max(1 / cfg.fps, 0.0))
     try:
+        if robot.name == "walkerS2" and hasattr(teleop, "enable_terminal_polling"):
+            teleop.enable_terminal_polling()
         teleop_loop(
             teleop=teleop,
             robot=robot,

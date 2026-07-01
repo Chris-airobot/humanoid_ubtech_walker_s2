@@ -79,7 +79,7 @@ class WalkerS2Config(RobotConfig):
     # 机器人配置
     prim_path: str = "/Root/Ref_Xform/Ref"  
     robot_name: str = "walkerS2"
-    urdf_path: str = str(Path("assets") / "resources" / "s2.urdf")
+    urdf_path: str = "WalkerS2-Model/walker_s2_official/walker_s2.urdf"
 
     # Isaac Sim 配置
     headless: bool = False
