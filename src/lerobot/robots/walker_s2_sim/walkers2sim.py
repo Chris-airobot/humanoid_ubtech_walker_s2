@@ -1235,17 +1235,10 @@ class WalkerS2sim(Robot):
                 task_num=self.config.task_cfg.get("task_number", 1),
             )
 
-        # Always use physical position drives. The contact profile is deliberately
-        # compliant so the object can stop the fingers without being tunneled through.
-        assisted_phase = (
-            self._assisted_grasp.get("phase") if self._assisted_grasp else None
-        )
-        hand_profile = (
-            "contact" if assisted_phase in ("close", "settle", "lift") else "firm"
-        )
-        self._robot_interface.apply_dexterous_hand_targets(
-            control_profile=hand_profile
-        )
+        # Keep dexterous hand presets stable during teleop. The hand interface
+        # accepts the profile argument for assisted-grasp compatibility, but
+        # currently hard-holds preset joints to avoid idle finger oscillation.
+        self._robot_interface.apply_dexterous_hand_targets()
 
         # 夹持器控制：
         #   夹持时：NaN（关闭PD）+ close_tau（纯力矩），避免位置+力矩叠加导致过夹
@@ -1376,6 +1369,17 @@ class WalkerS2sim(Robot):
         })
         logger.info("SimulationApp 创建成功")
 
+        # Older graph schemas embedded in the scene assets trigger the same
+        # non-actionable file-format-upgrade callback error for every graph.
+        # Silence that channel only while assets are being upgraded, then
+        # restore its previous threshold before normal simulation begins.
+        import carb.settings
+
+        carb_settings = carb.settings.get_settings()
+        omnigraph_log_key = "/log/channels/omni.graph"
+        previous_omnigraph_log_level = carb_settings.get(omnigraph_log_key)
+        carb_settings.set(omnigraph_log_key, "fatal")
+
         # 步骤 2: 加载场景 USD（关键！之前缺少这一步）
         from isaacsim.core.api import World
         import omni.usd as omni_usd
@@ -1452,13 +1456,26 @@ class WalkerS2sim(Robot):
 
             logger.info("SceneBuilder 场景构建完成")
         except ImportError as e:
+            carb_settings.set(
+                omnigraph_log_key,
+                previous_omnigraph_log_level or "error",
+            )
             logger.error(f"无法导入 SceneBuilder: {e}")
             raise
         except Exception as e:
+            carb_settings.set(
+                omnigraph_log_key,
+                previous_omnigraph_log_level or "error",
+            )
             logger.error(f"场景构建失败: {e}")
             import traceback
             logger.error(traceback.format_exc())
             raise
+
+        carb_settings.set(
+            omnigraph_log_key,
+            previous_omnigraph_log_level or "error",
+        )
 
         # 步骤 5: 创建机器人接口（连接到 SceneBuilder 创建的机器人）
         logger.info("步骤 5: 创建机器人接口...")

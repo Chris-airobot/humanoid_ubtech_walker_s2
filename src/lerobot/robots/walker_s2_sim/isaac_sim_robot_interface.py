@@ -908,12 +908,15 @@ class IsaacSimRobotInterface:
         )
 
     def apply_dexterous_hand_targets(self, control_profile: str = "firm") -> None:
-        """Continuously hold smoothed hand targets through PhysX position drives."""
-        if (
-            self._articulation is None
-            or not self._articulation_physics_ready()
-            or not self._dexterous_hand_all_indices
-        ):
+        """Smooth and hard-lock dexterous hand joints to their target pose.
+
+        The imported UBT hand has small distal links that visibly oscillate when
+        held only through low-force PhysX drives. For keyboard teleop the hand
+        poses are discrete presets, so direct joint-position holding gives the
+        stable behavior we had before while preserving the same public API.
+        ``control_profile`` is accepted for compatibility with assisted grasp.
+        """
+        if self._articulation is None or not self._dexterous_hand_all_indices:
             return
 
         self.step_dexterous_hands()
@@ -929,16 +932,14 @@ class IsaacSimRobotInterface:
         if not hand_indices:
             return
 
-        self._set_dexterous_hand_control_profile(control_profile)
         hand_indices_t = torch.tensor(hand_indices, dtype=torch.int32)
-        hand_values_t = torch.tensor(hand_values, dtype=torch.float32)
-        from isaacsim.core.utils.types import ArticulationActions
-
-        self._articulation.apply_action(
-            ArticulationActions(
-                joint_positions=hand_values_t,
-                joint_indices=hand_indices_t,
-            )
+        self._articulation.set_joint_positions(
+            torch.tensor(hand_values, dtype=torch.float32),
+            joint_indices=hand_indices_t,
+        )
+        self._articulation.set_joint_velocities(
+            torch.zeros(len(hand_indices), dtype=torch.float32),
+            joint_indices=hand_indices_t,
         )
 
     def _lock_body_joints_to_standing(self) -> None:
