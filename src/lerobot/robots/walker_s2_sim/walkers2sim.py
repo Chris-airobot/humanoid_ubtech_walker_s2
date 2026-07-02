@@ -174,8 +174,12 @@ class WalkerS2sim(Robot):
         self._teleop_ik_rot_weight = float(grasp_cfg.get("teleop_ik_rot_weight", 0.1))
         self._teleop_ik_pos_tol = float(grasp_cfg.get("teleop_ik_pos_tol", 1e-5))
         self._teleop_ik_rot_tol = float(grasp_cfg.get("teleop_ik_rot_tol", 1e-5))
-        self._teleop_target_max_xyz_step = 0.02
-        self._teleop_target_max_rpy_step = 0.12
+        self._teleop_target_max_xyz_step = 0.04
+        self._teleop_target_max_rpy_step = 0.18
+        self._assisted_grasp: Optional[dict[str, Any]] = None
+        self._assisted_grasp_key_was_pressed = False
+        self._cancel_grasp_key_was_pressed = False
+        self._grasp_debug_root = "/GraspDebug"
 
         # 头部相机可视化
         self._head_visualizer = HeadStereoVisualizer(
@@ -233,6 +237,465 @@ class WalkerS2sim(Robot):
 
     def _reset_teleop_ee_targets(self) -> None:
         self._teleop_ee_targets = {"left": None, "right": None}
+
+    def _clear_grasp_debug_markers(self) -> None:
+        try:
+            import omni.usd
+            from pxr import Sdf
+
+            stage = omni.usd.get_context().get_stage()
+            if stage is not None and stage.GetPrimAtPath(self._grasp_debug_root).IsValid():
+                stage.RemovePrim(Sdf.Path(self._grasp_debug_root))
+        except Exception:
+            logger.exception("[assisted_grasp] Failed to clear grasp debug markers")
+
+    @staticmethod
+    def _bind_debug_material(stage, prim, material_name: str, color) -> None:
+        from pxr import Gf, Sdf, UsdShade
+
+        material_path = f"/GraspDebug/Materials/{material_name}"
+        material = UsdShade.Material.Define(stage, material_path)
+        shader = UsdShade.Shader.Define(stage, f"{material_path}/PreviewSurface")
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
+            Gf.Vec3f(*color)
+        )
+        shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
+            Gf.Vec3f(*color)
+        )
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.25)
+        material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+        UsdShade.MaterialBindingAPI(prim).Bind(material)
+
+    @staticmethod
+    def _set_debug_sphere(stage, path: str, position, radius: float, color, material_name: str) -> None:
+        from pxr import Gf, UsdGeom
+
+        sphere = UsdGeom.Sphere.Define(stage, path)
+        sphere.CreateRadiusAttr(float(radius))
+        xformable = UsdGeom.Xformable(sphere.GetPrim())
+        xformable.ClearXformOpOrder()
+        xformable.AddTranslateOp().Set(Gf.Vec3d(*np.asarray(position, dtype=float)))
+        UsdGeom.Gprim(sphere.GetPrim()).CreateDisplayColorAttr([Gf.Vec3f(*color)])
+        try:
+            WalkerS2sim._bind_debug_material(stage, sphere.GetPrim(), material_name, color)
+        except Exception:
+            logger.debug("[assisted_grasp] USD material binding failed", exc_info=True)
+
+    @staticmethod
+    def _set_debug_line(stage, path: str, start, end, color, width: float = 0.008) -> None:
+        from pxr import Gf, UsdGeom
+
+        curve = UsdGeom.BasisCurves.Define(stage, path)
+        curve.CreateTypeAttr("linear")
+        curve.CreateCurveVertexCountsAttr([2])
+        curve.CreatePointsAttr(
+            [
+                Gf.Vec3f(*np.asarray(start, dtype=float)),
+                Gf.Vec3f(*np.asarray(end, dtype=float)),
+            ]
+        )
+        curve.CreateWidthsAttr([float(width), float(width)])
+        UsdGeom.Gprim(curve.GetPrim()).CreateDisplayColorAttr([Gf.Vec3f(*color)])
+
+    def _draw_debug_frame(
+        self,
+        stage,
+        coord,
+        root: str,
+        origin_base: np.ndarray,
+        rotation_base: np.ndarray,
+        axis_length: float = 0.08,
+    ) -> None:
+        origin_world = coord.robot_to_world(origin_base)
+        axis_specs = (
+            ("x", rotation_base[:, 0], (1.0, 0.05, 0.05)),
+            ("y", rotation_base[:, 1], (0.05, 0.8, 0.05)),
+            ("z", rotation_base[:, 2], (0.1, 0.3, 1.0)),
+        )
+        for axis_name, axis_base, color in axis_specs:
+            end_world = coord.robot_to_world(origin_base + axis_base * axis_length)
+            self._set_debug_line(
+                stage,
+                f"{root}/{axis_name}_axis",
+                origin_world,
+                end_world,
+                color,
+                width=0.006,
+            )
+
+    def _draw_grasp_debug_markers(
+        self,
+        planner,
+        pregrasp_pose: np.ndarray,
+        grasp_pose: np.ndarray,
+        lift_pose: np.ndarray,
+    ) -> None:
+        try:
+            import omni.usd
+            from pxr import UsdGeom
+
+            stage = omni.usd.get_context().get_stage()
+            if stage is None:
+                return
+
+            UsdGeom.Xform.Define(stage, self._grasp_debug_root)
+            UsdGeom.Xform.Define(stage, f"{self._grasp_debug_root}/Materials")
+
+            coord = self._scene_builder.coordinate_transform
+            grasp_root = f"{self._grasp_debug_root}/planned_grasp"
+            UsdGeom.Xform.Define(stage, grasp_root)
+            tcp_base = grasp_pose[:3] + planner.tcp_offset_base
+            current_ee = self._robot_interface.ik_solver.get_ee_pose(planner.grasp_arm)
+            current_tcp_base = (
+                np.asarray(current_ee.translation, dtype=float)
+                + np.asarray(current_ee.rotation, dtype=float) @ planner.tcp_offset_local
+            )
+
+            self._set_debug_sphere(
+                stage,
+                f"{self._grasp_debug_root}/pregrasp",
+                coord.robot_to_world(pregrasp_pose[:3]),
+                0.018,
+                (1.0, 0.55, 0.05),
+                "pregrasp_orange",
+            )
+            self._set_debug_sphere(
+                stage,
+                f"{self._grasp_debug_root}/sixforce_target",
+                coord.robot_to_world(grasp_pose[:3]),
+                0.026,
+                (0.05, 0.25, 1.0),
+                "sixforce_blue",
+            )
+            self._set_debug_sphere(
+                stage,
+                f"{self._grasp_debug_root}/planned_tcp",
+                coord.robot_to_world(tcp_base),
+                0.020,
+                (1.0, 0.05, 0.9),
+                "planned_tcp_magenta",
+            )
+            self._set_debug_sphere(
+                stage,
+                f"{self._grasp_debug_root}/current_tcp",
+                coord.robot_to_world(current_tcp_base),
+                0.016,
+                (0.0, 0.9, 1.0),
+                "current_tcp_cyan",
+            )
+            self._set_debug_sphere(
+                stage,
+                f"{self._grasp_debug_root}/lift_target",
+                coord.robot_to_world(lift_pose[:3]),
+                0.016,
+                (0.2, 1.0, 0.2),
+                "lift_green",
+            )
+            self._set_debug_line(
+                stage,
+                f"{self._grasp_debug_root}/sixforce_to_tcp",
+                coord.robot_to_world(grasp_pose[:3]),
+                coord.robot_to_world(tcp_base),
+                (1.0, 0.05, 0.9),
+                width=0.006,
+            )
+            self._draw_debug_frame(
+                stage,
+                coord,
+                grasp_root,
+                grasp_pose[:3],
+                planner.R_grasp,
+            )
+            palm_target_pos = getattr(planner, "palm_target_pos_base", None)
+            palm_target_R = getattr(planner, "palm_target_R_base", None)
+            if palm_target_pos is not None and palm_target_R is not None:
+                palm_target_pos = np.asarray(palm_target_pos, dtype=float)
+                self._set_debug_sphere(
+                    stage,
+                    f"{self._grasp_debug_root}/palm_target",
+                    coord.robot_to_world(palm_target_pos),
+                    0.018,
+                    (1.0, 0.85, 0.05),
+                    "palm_target_yellow",
+                )
+                self._draw_debug_frame(
+                    stage,
+                    coord,
+                    f"{self._grasp_debug_root}/planned_palm",
+                    palm_target_pos,
+                    np.asarray(palm_target_R, dtype=float),
+                    axis_length=0.06,
+                )
+            logger.info(
+                "[assisted_grasp] Drew debug markers: blue=sixforce target, "
+                "magenta=planned TCP, yellow=palm target, cyan=current TCP"
+            )
+        except Exception:
+            logger.exception("[assisted_grasp] Failed to draw grasp debug markers")
+
+    @staticmethod
+    def _interpolate_pose(start: np.ndarray, goal: np.ndarray, alpha: float) -> np.ndarray:
+        """Interpolate xyz linearly and RPY through the shortest wrapped angle."""
+        alpha = float(np.clip(alpha, 0.0, 1.0))
+        alpha = alpha * alpha * (3.0 - 2.0 * alpha)
+        result = np.asarray(start, dtype=float).copy()
+        goal = np.asarray(goal, dtype=float)
+        result[:3] += alpha * (goal[:3] - result[:3])
+        angle_delta = (goal[3:] - result[3:] + np.pi) % (2.0 * np.pi) - np.pi
+        result[3:] += alpha * angle_delta
+        return result
+
+    def _filter_reachable_grasp_parts(
+        self,
+        part_poses: list[dict[str, Any]],
+        coord,
+        grasp_cfg: dict[str, Any],
+        ee_poses: dict[str, np.ndarray],
+    ) -> list[dict[str, Any]]:
+        max_distance = float(grasp_cfg.get("max_grasp_distance", 0.85))
+        x_bounds = np.asarray(grasp_cfg.get("workspace_x", [0.15, 0.85]), dtype=float)
+        y_bounds = np.asarray(grasp_cfg.get("workspace_y", [-0.65, 0.65]), dtype=float)
+        z_bounds = np.asarray(grasp_cfg.get("workspace_z", [-0.05, 0.55]), dtype=float)
+        z_offset = float(grasp_cfg.get("grasp_height_offset", 0.0))
+        candidates: list[tuple[float, int, dict[str, Any]]] = []
+
+        for i, part in enumerate(part_poses):
+            world = np.asarray(part.get("position", [np.nan, np.nan, np.nan]), dtype=float)
+            if world.shape != (3,) or not np.all(np.isfinite(world)):
+                logger.warning("[assisted_grasp] Reject part %s: invalid world pose %s", part.get("prim_path"), world)
+                continue
+            base = coord.world_to_robot(world + np.array([0.0, 0.0, z_offset]))
+            arm = "left" if base[1] > 0.0 else "right"
+            distance = float(np.linalg.norm(base - ee_poses[arm][:3]))
+            in_bounds = (
+                x_bounds[0] <= base[0] <= x_bounds[1]
+                and y_bounds[0] <= base[1] <= y_bounds[1]
+                and z_bounds[0] <= base[2] <= z_bounds[1]
+            )
+            if not in_bounds or distance > max_distance:
+                logger.warning(
+                    "[assisted_grasp] Reject part %s: base=%s arm=%s distance=%.3fm",
+                    part.get("prim_path"),
+                    np.array2string(base, precision=3, suppress_small=True),
+                    arm,
+                    distance,
+                )
+                continue
+            priority = 0 if i == int(grasp_cfg.get("target_index", 0)) else 1
+            candidates.append((priority + distance * 0.01, i, part))
+
+        candidates.sort(key=lambda item: item[0])
+        return [item[2] for item in candidates]
+
+    def _start_assisted_grasp(self) -> bool:
+        if self._scene_builder is None or self._robot_interface is None:
+            logger.warning("[assisted_grasp] Scene or robot is not ready")
+            return False
+
+        try:
+            self._scene_builder.init_coordinate_transform(self._robot_interface.ik_solver)
+        except Exception:
+            logger.exception("[assisted_grasp] Failed to refresh coordinate transform")
+            return False
+
+        coord = getattr(self._scene_builder, "coordinate_transform", None)
+        if coord is None:
+            logger.warning("[assisted_grasp] Coordinate transform is unavailable")
+            return False
+
+        ee_poses = self._robot_interface.get_ee_poses()
+        if ee_poses is None:
+            logger.warning("[assisted_grasp] End-effector poses are unavailable")
+            return False
+
+        part_poses = self._scene_builder.get_parts_world_poses()
+        if not part_poses:
+            logger.warning("[assisted_grasp] No parts found in the scene")
+            return False
+
+        try:
+            from Ubtech_sim.source.grasp_planner import GraspPlanner
+
+            grasp_cfg = self.config.task_cfg.get("grasp", {})
+            hand_pose = str(grasp_cfg.get("hand_pose", "pinch"))
+            profile_cfg = grasp_cfg.get("profiles", {}).get(hand_pose, {})
+            active_grasp_cfg = {**grasp_cfg, **profile_cfg}
+            reachable_parts = self._filter_reachable_grasp_parts(
+                part_poses, coord, active_grasp_cfg, ee_poses
+            )
+            if not reachable_parts:
+                logger.warning("[assisted_grasp] No reachable parts; keeping teleop running")
+                return False
+            planner_cfg = dict(active_grasp_cfg)
+            planner_cfg["target_index"] = 0
+            planner = GraspPlanner(planner_cfg, self._robot_interface, coord)
+            planner.compute_grasp_target(reachable_parts)
+        except Exception:
+            logger.exception("[assisted_grasp] Failed to compute grasp target")
+            return False
+
+        if planner.active_grasp is None or planner.target_prim_path is None:
+            logger.warning("[assisted_grasp] Planner did not produce a target")
+            return False
+
+        arm = planner.grasp_arm
+        grasp_pose = np.asarray(planner.active_grasp, dtype=float)
+        if str(active_grasp_cfg.get("approach_direction", "tool")).lower() == "vertical":
+            approach_direction = coord.robot_world_R_inv @ np.array([0.0, 0.0, -1.0])
+        else:
+            approach_direction = np.asarray(planner.R_grasp[:, 2], dtype=float)
+        pregrasp_pose = grasp_pose.copy()
+        pregrasp_pose[:3] -= approach_direction * float(
+            active_grasp_cfg.get("pregrasp_distance", 0.12)
+        )
+        lift_pose = grasp_pose.copy()
+        lift_pose[:3] -= approach_direction * float(active_grasp_cfg.get("lift_height", 0.17))
+
+        side = "L" if arm == "left" else "R"
+        self._robot_interface.snap_dexterous_hand_pose(side, "travel")
+        self._reset_teleop_ee_targets()
+        self._go_home = False
+        self._assisted_grasp = {
+            "arm": arm,
+            "side": side,
+            "target_path": planner.target_prim_path,
+            "hand_pose": hand_pose,
+            "preshape_pose": str(active_grasp_cfg.get("preshape_pose", f"{hand_pose}_pre")),
+            "phase": "pregrasp",
+            "phase_elapsed": 0.0,
+            "phase_start": np.asarray(ee_poses[arm], dtype=float).copy(),
+            "pregrasp": pregrasp_pose,
+            "grasp": grasp_pose,
+            "lift": lift_pose,
+            "durations": {
+                "pregrasp": max(float(active_grasp_cfg.get("approach_time", 3.0)), 1e-3),
+                "preshape": max(float(active_grasp_cfg.get("preshape_time", 0.8)), 1e-3),
+                "reach": max(float(active_grasp_cfg.get("reach_time", 2.0)), 1e-3),
+                "close": max(float(active_grasp_cfg.get("close_time", 1.0)), 1e-3),
+                "settle": max(float(active_grasp_cfg.get("settle_time", 1.0)), 1e-3),
+                "lift": max(float(active_grasp_cfg.get("lift_time", 2.0)), 1e-3),
+            },
+            "ik_kwargs": {
+                "rot_weight": float(active_grasp_cfg.get("ik_rot_weight", 0.35)),
+                "pos_tol": float(active_grasp_cfg.get("ik_pos_tol", 0.008)),
+                "rot_tol": float(active_grasp_cfg.get("ik_rot_tol", 0.08)),
+                "null_weight": float(active_grasp_cfg.get("ik_null_weight", 0.02)),
+                "max_iter": int(active_grasp_cfg.get("ik_max_iter", 300)),
+                "damping": float(active_grasp_cfg.get("ik_damping", 1e-4)),
+                "dq_max": float(active_grasp_cfg.get("ik_dq_max", 0.5)),
+            },
+            "waypoint_tolerance": float(active_grasp_cfg.get("waypoint_tolerance", 0.025)),
+            "waypoint_timeout": float(active_grasp_cfg.get("waypoint_timeout", 2.0)),
+        }
+        self._draw_grasp_debug_markers(planner, pregrasp_pose, grasp_pose, lift_pose)
+        logger.info(
+            "[assisted_grasp] Started target=%s arm=%s pose=%s",
+            planner.target_prim_path,
+            arm,
+            self._assisted_grasp["hand_pose"],
+        )
+        return True
+
+    def _cancel_assisted_grasp(self, reason: str = "operator request") -> None:
+        if self._assisted_grasp is None:
+            return
+        logger.info("[assisted_grasp] Cancelled: %s", reason)
+        self._assisted_grasp = None
+        self._reset_teleop_ee_targets()
+        self._clear_grasp_debug_markers()
+
+    def _step_assisted_grasp(self, step_size: float) -> None:
+        state = self._assisted_grasp
+        if state is None or self._robot_interface is None:
+            return
+
+        phase = state["phase"]
+        duration = state["durations"][phase]
+        state["phase_elapsed"] += max(float(step_size), 0.0)
+
+        if phase == "pregrasp":
+            goal = state["pregrasp"]
+        elif phase in ("preshape", "reach", "close", "settle"):
+            goal = state["grasp"]
+        else:
+            goal = state["lift"]
+
+        if phase in ("preshape", "close", "settle"):
+            target = goal
+        else:
+            target = self._interpolate_pose(
+                state["phase_start"], goal, state["phase_elapsed"] / duration
+            )
+
+        arm = state["arm"]
+        ik_result = self._robot_interface.control_dual_arm_ik(
+            step_size=step_size,
+            left_target_xyzrpy=target if arm == "left" else None,
+            right_target_xyzrpy=target if arm == "right" else None,
+            **state["ik_kwargs"],
+        )
+        if ik_result and "smoothed_positions" in ik_result:
+            positions = np.asarray(ik_result["smoothed_positions"], dtype=np.float32)
+            if positions.shape[0] >= 7:
+                arm_slice = slice(0, 7) if arm == "left" else slice(7, 14)
+                self._hold_arm_positions[arm_slice] = positions[:7]
+
+        if state["phase_elapsed"] < duration:
+            return
+
+        if phase in ("pregrasp", "reach", "lift"):
+            ee_poses = self._robot_interface.get_ee_poses()
+            if ee_poses is None:
+                self._cancel_assisted_grasp("end-effector feedback unavailable")
+                return
+            position_error = float(np.linalg.norm(ee_poses[arm][:3] - goal[:3]))
+            if position_error > state["waypoint_tolerance"]:
+                if state["phase_elapsed"] < duration + state["waypoint_timeout"]:
+                    return
+                if phase in ("pregrasp", "reach"):
+                    self._cancel_assisted_grasp(
+                        f"{phase} waypoint missed by {position_error:.3f} m"
+                    )
+                    return
+                logger.warning(
+                    "[assisted_grasp] Lift ended %.3f m from its waypoint",
+                    position_error,
+                )
+
+        next_phase = {
+            "pregrasp": "preshape",
+            "preshape": "reach",
+            "reach": "close",
+            "close": "settle",
+            "settle": "lift",
+            "lift": "done",
+        }[phase]
+        if next_phase == "done":
+            logger.info(
+                "[assisted_grasp] Complete target=%s arm=%s",
+                state["target_path"],
+                arm,
+            )
+            self._assisted_grasp = None
+            return
+
+        state["phase"] = next_phase
+        state["phase_elapsed"] = 0.0
+        state["phase_start"] = np.asarray(goal, dtype=float).copy()
+        if next_phase == "preshape":
+            self._robot_interface.set_dexterous_hand_pose(
+                state["side"], state["preshape_pose"]
+            )
+        elif next_phase == "close":
+            self._robot_interface.close_dexterous_hand(
+                state["side"], state["hand_pose"]
+            )
+            if arm == "left":
+                self._left_gripping = True
+            else:
+                self._right_gripping = True
+        logger.info("[assisted_grasp] Phase: %s", next_phase)
 
     def _accumulate_teleop_ee_target(
         self,
@@ -506,6 +969,7 @@ class WalkerS2sim(Robot):
                     self._go_home_key_was_pressed = True
                     self._go_home = not self._go_home
                     if self._go_home:
+                        self._cancel_assisted_grasp("go_home requested")
                         self._reset_teleop_ee_targets()
                         logger.info("[go_home] 开始插值回到初始位置...")
                     else:
@@ -534,6 +998,7 @@ class WalkerS2sim(Robot):
 
         if (abs_action is not None) and (not self._go_home):
             # ====== 推理/回放模式：直接使用记录的关节位置 ======
+            self._cancel_assisted_grasp("absolute action received")
             # action 布局：[0:14]=arm, [14:18]=finger_positions, [18]=left_cmd, [19]=right_cmd
             self._reset_teleop_ee_targets()
             self._hold_arm_positions = abs_action[:14].copy()
@@ -563,13 +1028,32 @@ class WalkerS2sim(Robot):
                     frame_id=self._send_action_step_idx
                 )
                 keyboard_state = self._teleop.get_keyboard_state()
+                grasp_pressed = bool(keyboard_state.get("assisted_grasp"))
+                cancel_grasp_pressed = bool(keyboard_state.get("cancel_assisted_grasp"))
+                if cancel_grasp_pressed and not self._cancel_grasp_key_was_pressed:
+                    self._cancel_assisted_grasp()
+                if grasp_pressed and not self._assisted_grasp_key_was_pressed:
+                    if self._assisted_grasp is None:
+                        self._start_assisted_grasp()
+                    else:
+                        logger.info("[assisted_grasp] Sequence already running; press 'c' to cancel")
+                self._assisted_grasp_key_was_pressed = grasp_pressed
+                self._cancel_grasp_key_was_pressed = cancel_grasp_pressed
+
                 has_left_input = np.linalg.norm(left_delta) > 1e-8
                 has_right_input = np.linalg.norm(right_delta) > 1e-8
                 has_gripper_input = abs(left_gripper) > 0.01 or abs(right_gripper) > 0.01
                 ik_status_debug = ""
                 ik_joint_delta_debug = ""
+                ee_poses = None
 
-                if has_left_input or has_right_input:
+                if self._assisted_grasp is not None:
+                    self._step_assisted_grasp(step_size)
+                elif has_left_input or has_right_input:
+                    if has_left_input:
+                        self._robot_interface.prepare_dexterous_hand_for_arm_motion("L")
+                    if has_right_input:
+                        self._robot_interface.prepare_dexterous_hand_for_arm_motion("R")
                     ee_poses = self._robot_interface.get_ee_poses()
                     if ee_poses is not None:
                         left_target = (
@@ -614,7 +1098,7 @@ class WalkerS2sim(Robot):
                 g_open = self._robot_interface.gripper_open_width
                 g_close = self._robot_interface.gripper_close_width
                 g_lo, g_hi = min(g_open, g_close), max(g_open, g_close)
-                if abs(left_gripper) > 0.01:
+                if self._assisted_grasp is None and abs(left_gripper) > 0.01:
                     self._hold_finger_positions[:2] = np.clip(
                         self._hold_finger_positions[:2] - left_gripper * gripper_step, g_lo, g_hi
                     )
@@ -623,7 +1107,7 @@ class WalkerS2sim(Robot):
                         self._robot_interface.close_dexterous_hand("L")
                     else:
                         self._robot_interface.open_dexterous_hand("L")
-                if abs(right_gripper) > 0.01:
+                if self._assisted_grasp is None and abs(right_gripper) > 0.01:
                     self._hold_finger_positions[2:4] = np.clip(
                         self._hold_finger_positions[2:4] - right_gripper * gripper_step, g_lo, g_hi
                     )
@@ -634,7 +1118,9 @@ class WalkerS2sim(Robot):
                         self._robot_interface.open_dexterous_hand("R")
 
                 pose_name = None
-                if keyboard_state.get("hand_power"):
+                if self._assisted_grasp is not None:
+                    pose_name = None
+                elif keyboard_state.get("hand_power"):
                     pose_name = "power"
                 elif keyboard_state.get("hand_pinch"):
                     pose_name = "pinch"
@@ -693,8 +1179,11 @@ class WalkerS2sim(Robot):
             arm_finger_indices = self._robot_interface.arm_joint_indices + self._robot_interface.finger_joint_indices
             if not self._robot_interface.joint_interpolator.interp_active:
                 print('[_robot_control_callback] Starting interpolation to initial position...')
+                joint_states = self._robot_interface.get_joint_states()
+                if joint_states is None:
+                    return
                 self._robot_interface.joint_interpolator.set_target(
-                    start_q=torch.tensor(self._robot_interface.get_joint_states()['all_positions'])[arm_finger_indices],
+                    start_q=torch.tensor(joint_states['all_positions'])[arm_finger_indices],
                     target_q=torch.tensor(self._robot_interface.initial_joint_positions)[arm_finger_indices],
                     num_steps=self._num_interpolation_steps
                 )
@@ -709,20 +1198,33 @@ class WalkerS2sim(Robot):
             self._right_gripping = False
             if self._robot_interface.joint_interpolator.is_finished():
                 self._go_home = False  
-                all_positions = self._robot_interface.get_joint_states()['all_positions']
+                joint_states = self._robot_interface.get_joint_states()
+                if joint_states is None:
+                    return
+                all_positions = joint_states['all_positions']
                 self._robot_interface.reset_ik(all_positions)  
                 self._reset_teleop_ee_targets()
                 print('[_robot_control_callback] Interpolation to initial position completed.')      
                       
+        if not self._robot_interface._articulation_physics_ready():
+            return
+
         # USD baseline: set_arm + set_body(0) (zero = standing in the asset).
-        # URDF: hold full standing table every step (import_walker_s2_urdf.py pattern).
+        # URDF physical mode: hard-stabilize the body, but move arms through PD drives.
         if self._robot_interface.use_explicit_standing_body:
-            joint_targets = self._robot_interface.build_joint_target_vector(
-                self._hold_arm_positions,
-                self._hold_finger_positions if self._robot_interface.has_old_gripper else None,
-            )
-            self._robot_interface.apply_all_joint_targets(joint_targets)
-            self._robot_interface.set_arm_joint_positions_hard(self._hold_arm_positions)
+            if self._robot_interface.uses_physical_arm_control:
+                self._robot_interface.hold_stabilizing_joints()
+                self._robot_interface.set_arm_joint_positions_physical(
+                    self._hold_arm_positions,
+                    step_size=step_size,
+                )
+            else:
+                joint_targets = self._robot_interface.build_joint_target_vector(
+                    self._hold_arm_positions,
+                    self._hold_finger_positions if self._robot_interface.has_old_gripper else None,
+                )
+                self._robot_interface.apply_all_joint_targets(joint_targets)
+                self._robot_interface.set_arm_joint_positions_hard(self._hold_arm_positions)
         else:
             self._robot_interface.set_arm_joint_positions(
                 target_arm_positions=self._hold_arm_positions.tolist(),
@@ -733,9 +1235,17 @@ class WalkerS2sim(Robot):
                 task_num=self.config.task_cfg.get("task_number", 1),
             )
 
-        # Keep the dexterous hand visually and physically quiet at idle.
-        # Pose keys update the target; this call holds/interpolates it every frame.
-        self._robot_interface.apply_dexterous_hand_targets()
+        # Always use physical position drives. The contact profile is deliberately
+        # compliant so the object can stop the fingers without being tunneled through.
+        assisted_phase = (
+            self._assisted_grasp.get("phase") if self._assisted_grasp else None
+        )
+        hand_profile = (
+            "contact" if assisted_phase in ("close", "settle", "lift") else "firm"
+        )
+        self._robot_interface.apply_dexterous_hand_targets(
+            control_profile=hand_profile
+        )
 
         # 夹持器控制：
         #   夹持时：NaN（关闭PD）+ close_tau（纯力矩），避免位置+力矩叠加导致过夹
@@ -966,6 +1476,7 @@ class WalkerS2sim(Robot):
             world=self._world,
             urdf_path=urdf_path,
             use_explicit_standing_body=uses_urdf,
+            arm_control_cfg=self.config.task_cfg.get("robot", {}).get("arm_control", {}),
         )
 
         logger.info("初始化 Articulation（物理暂停中）...")
@@ -1426,7 +1937,11 @@ class WalkerS2sim(Robot):
         self._right_gripping = False
         self._go_home = False  # 重置回家标志
         self._go_home_key_was_pressed = False  # 重置回家按键状态
+        self._assisted_grasp = None
+        self._assisted_grasp_key_was_pressed = False
+        self._cancel_grasp_key_was_pressed = False
         self._reset_teleop_ee_targets()
+        self._clear_grasp_debug_markers()
 
         # 8. 重新快照 joint states 作为保持目标
         states = self._robot_interface.get_joint_states()

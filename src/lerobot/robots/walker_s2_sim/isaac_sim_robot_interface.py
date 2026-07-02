@@ -118,9 +118,22 @@ UBT_HAND_POSE_FRACTIONS: dict[str, tuple[float, ...]] = {
     # Sign is handled by the joint limit; 0.0 is open and 1.0 moves toward the
     # useful flexion/opposition limit.
     "open": (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    # Keep the thumb opposed and the fingers slightly flexed while the arm moves.
+    # A fully open hand leaves the long thumb links free to strike the table.
+    "travel": (0.35, 0.22, 0.14, 0.12, 0.10, 0.10, 0.08, 0.10, 0.08, 0.10, 0.08),
+    "pinch_pre": (0.64, 0.42, 0.30, 0.24, 0.18, 0.10, 0.08, 0.08, 0.06, 0.08, 0.06),
+    "tripod_pre": (0.64, 0.44, 0.32, 0.26, 0.20, 0.26, 0.20, 0.10, 0.08, 0.10, 0.08),
+    "power_pre": (0.52, 0.38, 0.30, 0.34, 0.30, 0.36, 0.32, 0.36, 0.32, 0.34, 0.30),
     "power": (0.78, 0.78, 0.72, 0.78, 0.78, 0.82, 0.82, 0.82, 0.82, 0.76, 0.76),
     "pinch": (0.82, 0.64, 0.54, 0.56, 0.48, 0.14, 0.10, 0.05, 0.05, 0.05, 0.05),
     "tripod": (0.82, 0.66, 0.56, 0.60, 0.54, 0.58, 0.50, 0.18, 0.14, 0.12, 0.10),
+}
+
+UBT_HAND_CONTROL_PROFILES: dict[str, tuple[float, float, float]] = {
+    # kp, kd, max effort. Free-space motion is strongly damped; contact motion
+    # follows the compliant hand setup used by the TienKung simulation.
+    "firm": (60.0, 10.0, 20.0),
+    "contact": (10.0, 2.0, 10.0),
 }
 
 
@@ -356,6 +369,7 @@ class IsaacSimRobotInterface:
         world: Any = None,
         urdf_path: Optional[str] = None,
         use_explicit_standing_body: bool = False,
+        arm_control_cfg: Optional[dict[str, Any]] = None,
     ):
         self.prim_path = prim_path
         self.name = name
@@ -364,6 +378,28 @@ class IsaacSimRobotInterface:
         self.time = 0.0
         self.urdf_path = urdf_path
         self.use_explicit_standing_body = use_explicit_standing_body
+        arm_control_cfg = arm_control_cfg or {}
+        self.arm_control_mode = str(arm_control_cfg.get("mode", "kinematic")).lower()
+        if self.arm_control_mode not in ("physical", "kinematic"):
+            raise ValueError(
+                f"Unsupported arm control mode {self.arm_control_mode!r}; "
+                "expected 'physical' or 'kinematic'"
+            )
+        self.arm_drive_stiffness = float(arm_control_cfg.get("stiffness", 180.0))
+        self.arm_drive_damping = float(arm_control_cfg.get("damping", 25.0))
+        self.arm_shoulder_effort_limit = float(
+            arm_control_cfg.get("shoulder_effort_limit", 80.0)
+        )
+        self.arm_elbow_effort_limit = float(
+            arm_control_cfg.get("elbow_effort_limit", 65.0)
+        )
+        self.arm_wrist_effort_limit = float(
+            arm_control_cfg.get("wrist_effort_limit", 25.0)
+        )
+        self.arm_velocity_limit = float(arm_control_cfg.get("velocity_limit", 1.2))
+        self.arm_acceleration_limit = float(
+            arm_control_cfg.get("acceleration_limit", 3.0)
+        )
 
         self.arm_joint_indices: list[int] = []
         self.finger_joint_indices: list[int] = []
@@ -375,6 +411,7 @@ class IsaacSimRobotInterface:
         self.dexterous_hand_close_pose: dict[str, str] = {"L": "power", "R": "power"}
         self.dexterous_hand_max_step = 0.035
         self._dexterous_hand_all_indices: list[int] = []
+        self._dexterous_hand_control_profile: Optional[str] = None
         self._standing_control_indices: list[int] = []
         self.body_joint_indices: list[int] = []
         self.head_joint_indices: list[int] = []
@@ -400,6 +437,8 @@ class IsaacSimRobotInterface:
         self._smooth_alpha = 0.3
         self._last_arm_positions = {}
         self._arm_hard_follow_positions: Optional[torch.Tensor] = None
+        self._arm_drive_command_positions: Optional[torch.Tensor] = None
+        self._arm_drive_command_velocities: Optional[torch.Tensor] = None
         self._joint_value_map = {
             "L_elbow_roll_joint": -1.8963565338596158,
             "L_elbow_yaw_joint": 1.4000461262831179,
@@ -436,6 +475,9 @@ class IsaacSimRobotInterface:
             self._joint_limit_target(joint_name, fractions[i])
             for i, joint_name in enumerate(UBT_HAND_JOINT_NAMES[side])
         ]
+
+    def _articulation_physics_ready(self) -> bool:
+        return self._articulation is not None and hasattr(self._articulation, "_physics_view")
 
     def _initialize_dexterous_hand_joints(self, all_joint_names: list[str]) -> None:
         self.dexterous_hand_joint_indices = {"L": [], "R": []}
@@ -487,15 +529,34 @@ class IsaacSimRobotInterface:
         pose_key = pose_name if pose_name in UBT_HAND_POSE_FRACTIONS else "open"
         self.dexterous_hand_target_positions[side] = self._pose_values_for_side(side, pose_key)
         self.dexterous_hand_active_pose[side] = pose_key
-        if pose_key != "open":
+        if pose_key in ("power", "pinch", "tripod"):
             self.dexterous_hand_close_pose[side] = pose_key
 
+    def snap_dexterous_hand_pose(self, side: str, pose_name: str) -> None:
+        self.set_dexterous_hand_pose(side, pose_name)
+        target = self.dexterous_hand_target_positions.get(side)
+        if target:
+            self.dexterous_hand_current_positions[side] = list(target)
+
     def open_dexterous_hand(self, side: str) -> None:
-        self.set_dexterous_hand_pose(side, "open")
+        self.snap_dexterous_hand_pose(side, "open")
+
+    def travel_dexterous_hand(self, side: str) -> None:
+        self.snap_dexterous_hand_pose(side, "travel")
+
+    def prepare_dexterous_hand_for_arm_motion(self, side: str) -> None:
+        if self.dexterous_hand_active_pose.get(side) in ("open", "travel"):
+            self.snap_dexterous_hand_pose(side, "travel")
 
     def close_dexterous_hand(self, side: str, pose_name: Optional[str] = None) -> None:
         pose = pose_name or self.dexterous_hand_close_pose.get(side, "power")
         self.set_dexterous_hand_pose(side, pose)
+
+    def preshape_dexterous_hand(self, side: str, pose_name: str) -> None:
+        preshape = f"{pose_name}_pre"
+        if preshape not in UBT_HAND_POSE_FRACTIONS:
+            preshape = "travel"
+        self.set_dexterous_hand_pose(side, preshape)
 
     def step_dexterous_hands(self) -> None:
         for side in ("L", "R"):
@@ -742,13 +803,18 @@ class IsaacSimRobotInterface:
         max_efforts = []
         for name in all_joint_names:
             if name in hand_joint_names:
-                kps.append(25.0)
-                kds.append(3.0)
-                max_efforts.append(8.0)
+                kps.append(60.0)
+                kds.append(6.0)
+                max_efforts.append(20.0)
             elif name in self.arm_joint_names:
-                kps.append(500.0)
-                kds.append(45.0)
-                max_efforts.append(260.0)
+                kps.append(self.arm_drive_stiffness)
+                kds.append(self.arm_drive_damping)
+                if "wrist" in name:
+                    max_efforts.append(self.arm_wrist_effort_limit)
+                elif "elbow" in name:
+                    max_efforts.append(self.arm_elbow_effort_limit)
+                else:
+                    max_efforts.append(self.arm_shoulder_effort_limit)
             elif name in self.head_joint_names:
                 kps.append(450.0)
                 kds.append(45.0)
@@ -765,10 +831,19 @@ class IsaacSimRobotInterface:
             kps=torch.tensor([kps], dtype=torch.float32),
             kds=torch.tensor([kds], dtype=torch.float32),
         )
+        self._dexterous_hand_control_profile = None
         if hasattr(self._articulation, "set_max_efforts"):
             self._articulation.set_max_efforts(
                 torch.tensor([max_efforts], dtype=torch.float32)
             )
+        logger.info(
+            "Arm controller: mode=%s kp=%.1f kd=%.1f velocity=%.2f acceleration=%.2f",
+            self.arm_control_mode,
+            self.arm_drive_stiffness,
+            self.arm_drive_damping,
+            self.arm_velocity_limit,
+            self.arm_acceleration_limit,
+        )
 
     def apply_all_joint_targets(self, positions, include_dexterous_hands: bool = False) -> None:
         """Apply one PD target vector to the stable standing/arm DOFs.
@@ -804,15 +879,41 @@ class IsaacSimRobotInterface:
         if self.use_explicit_standing_body:
             self._lock_body_joints_to_standing()
 
-    def apply_dexterous_hand_targets(self) -> None:
-        """Smooth and hard-lock dexterous hand joints to their target pose.
+    def _set_dexterous_hand_control_profile(self, profile: str) -> None:
+        if profile == self._dexterous_hand_control_profile:
+            return
+        if profile not in UBT_HAND_CONTROL_PROFILES:
+            raise ValueError(f"Unknown dexterous hand control profile: {profile}")
 
-        The imported UBT hand has very small links and low URDF effort limits.
-        Holding these fingers through ordinary articulation drives can leave
-        visible idle oscillation. For teleop data collection the hand presets
-        are discrete, so directly setting finger positions is much more stable.
-        """
-        if self._articulation is None or not self._dexterous_hand_all_indices:
+        kp, kd, max_effort = UBT_HAND_CONTROL_PROFILES[profile]
+        joint_indices = torch.tensor(self._dexterous_hand_all_indices, dtype=torch.int32)
+        count = len(self._dexterous_hand_all_indices)
+        self._articulation.set_gains(
+            kps=torch.full((1, count), kp, dtype=torch.float32),
+            kds=torch.full((1, count), kd, dtype=torch.float32),
+            joint_indices=joint_indices,
+        )
+        if hasattr(self._articulation, "set_max_efforts"):
+            self._articulation.set_max_efforts(
+                torch.full((1, count), max_effort, dtype=torch.float32),
+                joint_indices=joint_indices,
+            )
+        self._dexterous_hand_control_profile = profile
+        logger.info(
+            "Dexterous hand control profile: %s (kp=%.1f kd=%.1f effort=%.1f)",
+            profile,
+            kp,
+            kd,
+            max_effort,
+        )
+
+    def apply_dexterous_hand_targets(self, control_profile: str = "firm") -> None:
+        """Continuously hold smoothed hand targets through PhysX position drives."""
+        if (
+            self._articulation is None
+            or not self._articulation_physics_ready()
+            or not self._dexterous_hand_all_indices
+        ):
             return
 
         self.step_dexterous_hands()
@@ -828,20 +929,23 @@ class IsaacSimRobotInterface:
         if not hand_indices:
             return
 
+        self._set_dexterous_hand_control_profile(control_profile)
         hand_indices_t = torch.tensor(hand_indices, dtype=torch.int32)
-        self._articulation.set_joint_positions(
-            torch.tensor(hand_values, dtype=torch.float32),
-            joint_indices=hand_indices_t,
-        )
-        self._articulation.set_joint_velocities(
-            torch.zeros(len(hand_indices), dtype=torch.float32),
-            joint_indices=hand_indices_t,
+        hand_values_t = torch.tensor(hand_values, dtype=torch.float32)
+        from isaacsim.core.utils.types import ArticulationActions
+
+        self._articulation.apply_action(
+            ArticulationActions(
+                joint_positions=hand_values_t,
+                joint_indices=hand_indices_t,
+            )
         )
 
     def _lock_body_joints_to_standing(self) -> None:
         """Hard-lock non-teleop body/head DOFs to the official standing pose."""
         if (
             self._articulation is None
+            or not self._articulation_physics_ready()
             or not (self.body_joint_indices or self.head_joint_indices)
             or not self.standing_joint_positions
         ):
@@ -883,7 +987,8 @@ class IsaacSimRobotInterface:
         self.apply_all_joint_targets(targets)
 
     def hold_stabilizing_joints(self) -> None:
-        self.apply_full_standing_hold()
+        """Hold body/head while leaving arm drives under trajectory control."""
+        self._lock_body_joints_to_standing()
 
     def _setup_cameras(self):
         """Setup cameras."""
@@ -938,7 +1043,7 @@ class IsaacSimRobotInterface:
     def reset_ik(self, current_joint_positions: Optional[list[float]] = None):
         self._ik_warn_counter = 0
         self._last_arm_positions.clear()
-        self._arm_hard_follow_positions = None
+        self.reset_arm_command_state()
 
         if self.ik_solver is not None:
             self.ik_solver.reset_runtime_state()
@@ -976,7 +1081,7 @@ class IsaacSimRobotInterface:
         self.time = 0.0
         self._ik_warn_counter = 0
         self._last_arm_positions.clear()
-        self._arm_hard_follow_positions = None
+        self.reset_arm_command_state()
 
         if self.ik_solver is not None:
             self.ik_solver.reset_runtime_state()
@@ -1007,7 +1112,7 @@ class IsaacSimRobotInterface:
 
     def get_joint_states(self):
         """获取joint states."""
-        if self._articulation is None:
+        if self._articulation is None or not self._articulation_physics_ready():
             return None
 
         try:
@@ -1109,6 +1214,93 @@ class IsaacSimRobotInterface:
             )
         )
 
+    @property
+    def uses_physical_arm_control(self) -> bool:
+        return self.arm_control_mode == "physical"
+
+    def reset_arm_command_state(self) -> None:
+        """Re-seed the arm trajectory generator from measured simulation state."""
+        self._arm_drive_command_positions = None
+        self._arm_drive_command_velocities = None
+        self._arm_hard_follow_positions = None
+
+    @staticmethod
+    def _advance_arm_trajectory(
+        command_positions: torch.Tensor,
+        command_velocities: torch.Tensor,
+        target: torch.Tensor,
+        dt: float,
+        velocity_limit: float,
+        acceleration_limit: float,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Advance one stopping-distance-aware trapezoidal trajectory step."""
+        error = target - command_positions
+        at_target = torch.abs(error) <= 1e-7
+        stopping_velocity = torch.sqrt(2.0 * acceleration_limit * torch.abs(error))
+        desired_velocity = torch.sign(error) * torch.minimum(
+            stopping_velocity,
+            torch.full_like(stopping_velocity, velocity_limit),
+        )
+        velocity_delta = torch.clamp(
+            desired_velocity - command_velocities,
+            min=-acceleration_limit * dt,
+            max=acceleration_limit * dt,
+        )
+        next_velocity = command_velocities + velocity_delta
+        position_step = next_velocity * dt
+        would_overshoot = (position_step * error > 0.0) & (
+            torch.abs(position_step) >= torch.abs(error)
+        )
+        position_step = torch.where(would_overshoot, error, position_step)
+        next_position = command_positions + position_step
+        next_position = torch.where(at_target, target, next_position)
+        return next_position, next_velocity
+
+    def set_arm_joint_positions_physical(self, target_arm_positions, step_size: float) -> None:
+        """Send acceleration-limited position targets through Isaac articulation drives."""
+        from isaacsim.core.utils.types import ArticulationActions
+
+        if self._articulation is None or not self._articulation_physics_ready():
+            return
+
+        target = torch.as_tensor(target_arm_positions, dtype=torch.float32).flatten()
+        if target.shape[0] != 14:
+            raise ValueError(f"Expected 14 arm joint positions, got {target.shape[0]}")
+
+        dt = max(float(step_size), 1e-4)
+        joint_indices = torch.tensor(self.arm_joint_indices, dtype=torch.int32)
+        if self._arm_drive_command_positions is None:
+            measured = self._articulation.get_joint_positions()
+            if measured is None:
+                command_positions = target.clone()
+            else:
+                measured = torch.as_tensor(measured, dtype=torch.float32).flatten()
+                command_positions = measured[
+                    torch.tensor(self.arm_joint_indices, dtype=torch.long)
+                ].clone()
+            self._arm_drive_command_positions = command_positions
+            self._arm_drive_command_velocities = torch.zeros_like(command_positions)
+
+        acceleration = max(self.arm_acceleration_limit, 1e-4)
+        velocity_limit = max(self.arm_velocity_limit, 1e-4)
+        next_position, next_velocity = self._advance_arm_trajectory(
+            self._arm_drive_command_positions,
+            self._arm_drive_command_velocities,
+            target,
+            dt,
+            velocity_limit,
+            acceleration,
+        )
+
+        self._arm_drive_command_positions = next_position
+        self._arm_drive_command_velocities = next_velocity
+        self._articulation.apply_action(
+            ArticulationActions(
+                joint_positions=next_position.unsqueeze(0),
+                joint_indices=joint_indices,
+            )
+        )
+
     def set_arm_joint_positions_hard(self, target_arm_positions) -> None:
         """Smoothly follow arm targets for imported URDF teleop stability.
 
@@ -1116,7 +1308,7 @@ class IsaacSimRobotInterface:
         target generation remains the official pipeline; this filtered command
         prevents the visual snap caused by directly setting large IK jumps.
         """
-        if self._articulation is None:
+        if self._articulation is None or not self._articulation_physics_ready():
             return
 
         if not isinstance(target_arm_positions, torch.Tensor):
@@ -1277,6 +1469,7 @@ class IsaacSimRobotInterface:
         self.time = 0.0
         self._ik_warn_counter = 0
         self._last_arm_positions.clear()
+        self.reset_arm_command_state()
 
         if self.ik_solver is not None:
             self.ik_solver.reset_runtime_state()
@@ -1563,7 +1756,9 @@ class IsaacSimRobotInterface:
                 joint_indices=torch.tensor(self._waist_isaac_indices, dtype=torch.int32),
             )
 
-        if len(all_indices) > 0:
+        # In physical mode the callback-owned trajectory generator is the only
+        # writer of arm drive targets. Kinematic mode keeps the legacy behavior.
+        if len(all_indices) > 0 and not self.uses_physical_arm_control:
             self._articulation.apply_action(
                 ArticulationActions(
                     joint_positions=torch.tensor([all_positions], dtype=torch.float32),

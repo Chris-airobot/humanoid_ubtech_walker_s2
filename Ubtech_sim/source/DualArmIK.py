@@ -327,8 +327,16 @@ class DualArmIK:
 
     def _update_fail_count(self, side: str, success: bool):
         """更新连续失败计数；失败超阈值则复位 warm-start。"""
+        fail_info = getattr(self, "_last_fail_info", {})
+        near_solution = (
+            fail_info.get("side") == side
+            and fail_info.get("pos_err", float("inf")) < 0.08
+            and fail_info.get("rot_err", float("inf")) < fail_info.get("effective_rot_tol", 0.0) * 1.5
+        )
         if side == "left":
             if success:
+                self._left_fail_count = 0
+            elif near_solution:
                 self._left_fail_count = 0
             else:
                 self._left_fail_count += 1
@@ -337,6 +345,8 @@ class DualArmIK:
                     self._left_fail_count = 0
         else:
             if success:
+                self._right_fail_count = 0
+            elif near_solution:
                 self._right_fail_count = 0
             else:
                 self._right_fail_count += 1

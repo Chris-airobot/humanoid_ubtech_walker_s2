@@ -68,6 +68,30 @@ class SceneBuilder:
         return bool(pool)
 
     @staticmethod
+    def _ensure_static_mesh_colliders(root_paths, label="static"):
+        """Apply CollisionAPI to mesh prims under imported static assets."""
+        try:
+            from pxr import Usd, UsdGeom, UsdPhysics
+
+            stage = omni.usd.get_context().get_stage()
+            if stage is None:
+                return
+
+            applied = 0
+            for root_path in root_paths:
+                root = stage.GetPrimAtPath(root_path)
+                if not root.IsValid():
+                    continue
+                for prim in Usd.PrimRange(root):
+                    if prim.IsA(UsdGeom.Mesh):
+                        UsdPhysics.CollisionAPI.Apply(prim)
+                        applied += 1
+            if applied:
+                print(f"[SceneBuilder] {label}: ensured CollisionAPI on {applied} mesh prims")
+        except Exception as exc:
+            print(f"[SceneBuilder] {label}: failed to ensure static colliders: {exc}")
+
+    @staticmethod
     def _choose_asset_from_pool(pool):
         if isinstance(pool, (list, tuple)):
             return random.choice(pool)
@@ -120,6 +144,7 @@ class SceneBuilder:
                 if not isinstance(prims_in, (list, tuple)):
                     prims_in = [prims_in]
                 self.table_prim_paths = [str(prim.GetPath()) + "/Ref/material" for prim in prims_in]
+                self._ensure_static_mesh_colliders(self.table_prim_paths, label="table")
         return self.table
 
     def build_ConveyorBelt(self):

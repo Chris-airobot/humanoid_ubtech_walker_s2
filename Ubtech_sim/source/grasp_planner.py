@@ -132,6 +132,8 @@ class GraspPlanner:
         self.target_prim_path = None  # Target part USD path
         self.tcp_offset_base = np.zeros(3, dtype=float)  # TCP offset (base frame)
         self.R_grasp = np.eye(3)  # Grasp rotation matrix (initial identity)
+        self.palm_target_pos_base = None
+        self.palm_target_R_base = None
         self.grasp_arm = "left"  # Default left arm
         self.active_grasp = None  # Current grasp target (6D)
         self.left_init = None  # Left arm initial pose
@@ -177,7 +179,8 @@ class GraspPlanner:
 
         # Get target part information
         target_info = part_poses[self.target_index]
-        target_world = np.array(target_info["position"])  # Part world coordinates
+        target_world = np.array(target_info["position"], dtype=float)
+        target_world[2] += float(self.grasp_cfg.get("grasp_height_offset", 0.0))
         self.target_prim_path = target_info["prim_path"]  # Part USD path
         print(f"[Grasp] Target part: {target_info['prim_path']}")
         print(f"[Grasp] World position: {target_world}")
@@ -214,20 +217,47 @@ class GraspPlanner:
         x_grasp = reach_dir / np.linalg.norm(reach_dir)  # Normalize X-axis
         y_grasp = np.cross(base_down, x_grasp)  # Compute Y-axis (right-handed coordinate system)
         y_grasp /= np.linalg.norm(y_grasp)
-        self.R_grasp = np.column_stack([x_grasp, y_grasp, base_down])  # Build rotation matrix
+        desired_palm_R = np.column_stack([x_grasp, y_grasp, base_down])
+        grasp_frame = str(self.grasp_cfg.get("grasp_frame", "sixforce")).lower()
 
-        # Verify rotation matrix (Z-axis should point to world down, determinant should be 1)
-        z_world_check = self.coord.robot_world_R @ base_down
-        print(f"[Grasp] R_grasp Z-axis (base): {base_down}")
-        print(f"[Grasp] R_grasp Z-axis (world): {z_world_check} (should be [0, 0, -1])")
-        print(f"[Grasp] R_grasp det: {np.linalg.det(self.R_grasp):.4f} (should be 1)")
-        grasp_rpy = pin.rpy.matrixToRpy(self.R_grasp)  # Rotation matrix to RPY
+        if grasp_frame == "palm":
+            palm_frame = f"{'L' if self.grasp_arm == 'left' else 'R'}_palm_link"
+            palm_frame_id = self.robot.ik_solver.model.getFrameId(palm_frame)
+            palm_se3 = self.robot.ik_solver.data.oMf[palm_frame_id].copy()
+            sixforce_to_palm = init_se3.inverse() * palm_se3
+            palm_tcp = np.asarray(
+                self.grasp_cfg.get("palm_tcp_offset", [0.09, 0.0, -0.01]),
+                dtype=float,
+            )
+            if bool(self.grasp_cfg.get("mirror_palm_tcp_lateral", True)):
+                lateral = float(self.grasp_cfg.get("palm_tcp_lateral_offset", abs(palm_tcp[1])))
+                if lateral > 0.0:
+                    palm_tcp[1] = lateral if self.grasp_arm == "left" else -lateral
 
-        # Transform TCP local offset to base frame (using target rotation matrix)
+            # Build the desired palm pose first, then recover the corresponding
+            # sixforce pose expected by the arm IK solver.
+            desired_palm_pos = obj_robot - desired_palm_R @ palm_tcp
+            self.palm_target_pos_base = desired_palm_pos.copy()
+            self.palm_target_R_base = desired_palm_R.copy()
+            self.R_grasp = desired_palm_R @ sixforce_to_palm.rotation.T
+            grasp_pos = desired_palm_pos - self.R_grasp @ sixforce_to_palm.translation
+
+            # Cache the complete sixforce -> pinch-center offset for tracking.
+            self.tcp_offset_local = (
+                sixforce_to_palm.translation + sixforce_to_palm.rotation @ palm_tcp
+            )
+            print(f"[Grasp] Using palm frame: {palm_frame}")
+            print(f"[Grasp] Palm TCP local: {palm_tcp}")
+            print(f"[Grasp] Palm +X (finger direction): {desired_palm_R[:, 0]}")
+            print(f"[Grasp] Palm +Z (surface normal): {desired_palm_R[:, 2]}")
+        else:
+            self.R_grasp = desired_palm_R
+            self.palm_target_pos_base = None
+            self.palm_target_R_base = None
+            grasp_pos = obj_robot - self.R_grasp @ self.tcp_offset_local
+
+        grasp_rpy = pin.rpy.matrixToRpy(self.R_grasp)
         self.tcp_offset_base = self.R_grasp @ self.tcp_offset_local
-
-        # Compute final grasp target: part position - TCP offset (ensure TCP aligns with grasp point)
-        grasp_pos = obj_robot - self.tcp_offset_base
         self.active_grasp = np.concatenate([grasp_pos, grasp_rpy])  # Combine 6D pose
 
         # Verify TCP offset computation correctness

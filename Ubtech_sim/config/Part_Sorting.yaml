@@ -51,17 +51,65 @@ robot:
   robot_usd: 'Collected_WalkerS2_hand3/SubUSDs/s2_hand4_v1.usd'
   robot_position: [0.7, -0.2, 0.9] 
   robot_rotation: [0, 0, 90]
+  arm_control:
+    mode: kinematic
+    stiffness: 180.0
+    damping: 25.0
+    shoulder_effort_limit: 80.0
+    elbow_effort_limit: 65.0
+    wrist_effort_limit: 25.0
+    velocity_limit: 1.2
+    acceleration_limit: 3.0
 
 grasp:
   target_index: 0
+  hand_pose: pinch
+  # Each grasp type has its own pre-shape and contact center. These are initial
+  # geometry-based values and can be calibrated independently from test images.
+  profiles:
+    pinch:
+      preshape_pose: pinch_pre
+      palm_tcp_offset: [0.055, 0.0, 0.04]
+      palm_tcp_lateral_offset: 0.028
+    tripod:
+      preshape_pose: tripod_pre
+      palm_tcp_offset: [0.060, 0.0, 0.040]
+      palm_tcp_lateral_offset: 0.020
+    power:
+      preshape_pose: power_pre
+      palm_tcp_offset: [0.065, 0.0, 0.035]
+      palm_tcp_lateral_offset: 0.0
+  pregrasp_distance: 0.12
+  approach_direction: vertical
+  grasp_frame: palm
+  # Thumb-index pinch center in palm_link coordinates: forward, lateral,
+  # palm-normal (m). The lateral offset is mirrored for left/right hands.
+  # The planner points palm +Z downward, so a positive Z offset keeps the palm
+  # above the object/table while the TCP is at the grasp point.
+  palm_tcp_offset: [0.055, 0.0, 0.04]
+  palm_tcp_lateral_offset: 0.028
+  mirror_palm_tcp_lateral: true
+  grasp_height_offset: 0.025
+  max_grasp_distance: 0.85
+  workspace_x: [0.15, 0.85]
+  workspace_y: [-0.65, 0.65]
+  workspace_z: [-0.05, 0.55]
   lift_height: 0.17
-  settle_time: 2.0
   approach_time: 3.0
+  preshape_time: 0.8
   reach_time: 2.0
-  hold_time: 1.0
+  close_time: 1.0
+  settle_time: 1.0
   lift_time: 2.0
-  tcp_offset: [0.0, 0.0, 0.0]   # sixforce_link 局部坐标系下 TCP 的偏移 (m)
-  ik_rot_weight: 1.0
+  ik_rot_weight: 0.18
+  ik_pos_tol: 0.012
+  ik_rot_tol: 0.12
+  ik_null_weight: 0.0
+  ik_max_iter: 600
+  ik_damping: 0.0001
+  ik_dq_max: 0.35
+  waypoint_tolerance: 0.04
+  waypoint_timeout: 2.5
   scatter_area:
     center: [0.75, 0.28, 1.04]   # 散布中心 [x, y, z]
     size:   [0.30, 0.23]         # 散布半宽 x方向, y方向 (m)  →  x:[0.50,0.80] y:[0.10,0.30]
