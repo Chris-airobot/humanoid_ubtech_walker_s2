@@ -66,3 +66,27 @@ The complete baseline workflow consists of six stages. **We recommend following 
 | 4 | [Model Training](https://docs.ubtrobot.com/GHRC2026_TechnicalDocuments/docs/4/) | Training guides for ACT, Diffusion Policy, π₀ (PI0), π₀.₅ (PI05), and SmolVLA with full hyperparameters. |
 | 5 | [Policy Inference](https://docs.ubtrobot.com/GHRC2026_TechnicalDocuments/docs/5/) | Run inference with a trained policy model and automatically record the results. |
 | 6 | [4-Camera Real-time Display](https://docs.ubtrobot.com/GHRC2026_TechnicalDocuments/docs/6/) | Real-time preview from 4 RGB cameras and visualization configuration in teleoperation, recording, replay, and inference modes. |
+
+
+## Custom Command
+
+Build the docker
+```
+docker build -t ghrc_2026:v0 .
+```
+
+Prepare for the official s2 model:
+
+```
+python3 scripts/setup_official_walker_s2.py
+```
+
+
+Start the docker
+```
+./run.sh 
+```
+Run the teleop script
+```
+./teleop_part_sorting.sh
+```
