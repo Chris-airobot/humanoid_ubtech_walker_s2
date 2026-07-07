@@ -234,7 +234,11 @@ class SceneBuilder:
             }
             material_prim = self._physics_material("RobotHandContact", contact_cfg)
             material = UsdShade.Material(material_prim) if material_prim is not None else None
-            disabled_tokens = (
+            disabled_exact_names = (
+                "hand3_v1_left",
+                "hand3_v1_right",
+            )
+            disabled_name_tokens = (
                 "hand_base_link",
                 "palm_link",
             )
@@ -251,11 +255,15 @@ class SceneBuilder:
             disabled = 0
             for prim in Usd.PrimRange(root):
                 path_text = str(prim.GetPath()).lower()
+                path_parts = [part.lower() for part in str(prim.GetPath()).split("/") if part]
                 if not any(token in path_text for token in hand_tokens):
                     continue
                 if not prim.HasAPI(UsdPhysics.CollisionAPI):
                     continue
-                if any(token in path_text for token in disabled_tokens):
+                if (
+                    any(name in path_parts for name in disabled_exact_names)
+                    or any(token in path_text for token in disabled_name_tokens)
+                ):
                     prim.CreateAttribute(
                         "physics:collisionEnabled",
                         Sdf.ValueTypeNames.Bool,

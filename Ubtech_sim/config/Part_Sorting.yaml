@@ -69,7 +69,7 @@ table:
 
 robot:
   # Official merged body + UBT hand v3 (relative to repo root zollent_technology/)
-  robot_urdf: WalkerS2-Model/walker_s2_official/walker_s2.urdf
+  robot_urdf: WalkerS2-Model/walker_s2_description_hand3_v1_left_hand3_v1_right/walker_s2_description_hand3_v1_left_hand3_v1_right.urdf
   # Fallback USD spawn (used only when robot_urdf is absent):
   robot_usd: 'Collected_WalkerS2_hand3/SubUSDs/s2_hand4_v1.usd'
   robot_position: [0.7, -0.2, 0.9] 

@@ -37,12 +37,16 @@ class DualArmIK:
         "L_wrist_roll_link_geom_1",
         "L_hand_base_link",
         "L_palm_link",
+        "hand3_v1_left",
+        "hand3_v1_left_L_palm_link",
     )
     RIGHT_EE_FRAME_CANDIDATES = (
         "R_sixforce_link",
         "R_wrist_roll_link_geom_1",
         "R_hand_base_link",
         "R_palm_link",
+        "hand3_v1_right",
+        "hand3_v1_right_R_palm_link",
     )
 
     @staticmethod

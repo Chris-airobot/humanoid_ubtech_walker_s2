@@ -54,6 +54,11 @@ htmlcov/
 
 # Hugging Face / 本地下载
 resources/
+!assets/resources/
+assets/resources/*
+!assets/resources/walker_s2_description_hand3_v1_left_hand3_v1_right/
+!assets/resources/walker_s2_description_hand3_v1_left_hand3_v1_right/**
+assets/resources/walker_s2_description_hand3_v1_left_hand3_v1_right/*_isaac_simple_hand_collision.urdf
 weight/*
 !weight/.gitkeep
 !weight/README.md

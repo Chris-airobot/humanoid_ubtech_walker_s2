@@ -281,7 +281,31 @@ class GraspPlanner:
         grasp_frame = str(self.grasp_cfg.get("grasp_frame", "sixforce")).lower()
 
         if grasp_frame == "palm":
-            palm_frame = f"{'L' if self.grasp_arm == 'left' else 'R'}_palm_link"
+            if self.grasp_arm == "left":
+                palm_candidates = (
+                    "L_palm_link",
+                    "hand3_v1_left_L_palm_link",
+                    "hand3_v1_left",
+                )
+            else:
+                palm_candidates = (
+                    "R_palm_link",
+                    "hand3_v1_right_R_palm_link",
+                    "hand3_v1_right",
+                )
+            palm_frame = next(
+                (
+                    frame_name
+                    for frame_name in palm_candidates
+                    if self.robot.ik_solver.model.existFrame(frame_name)
+                ),
+                None,
+            )
+            if palm_frame is None:
+                raise ValueError(
+                    "No palm frame found for grasp planning. Tried: "
+                    + ", ".join(palm_candidates)
+                )
             palm_frame_id = self.robot.ik_solver.model.getFrameId(palm_frame)
             palm_se3 = self.robot.ik_solver.data.oMf[palm_frame_id].copy()
             sixforce_to_palm = init_se3.inverse() * palm_se3

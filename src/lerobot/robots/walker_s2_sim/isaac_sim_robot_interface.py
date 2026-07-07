@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any, Optional
 
 import numpy as np
@@ -146,8 +147,8 @@ UBT_HAND_JOINT_INERTIAS = (
     1.82560831e-6,
 )
 UBT_HAND_DRIVE_PROFILES = {
-    "firm": {"frequency": 45.0, "min_kp": 0.008, "max_effort": 0.05},
-    "contact": {"frequency": 35.0, "min_kp": 0.005, "max_effort": 0.03},
+    "firm": {"frequency": 45.0, "min_kp": 0.08, "max_effort": 0.45},
+    "contact": {"frequency": 35.0, "min_kp": 0.05, "max_effort": 0.35},
 }
 
 # =========================================================================
@@ -420,6 +421,7 @@ class IsaacSimRobotInterface:
         self.finger_joint_indices: list[int] = []
         self.has_old_gripper: bool = False
         self.dexterous_hand_joint_indices: dict[str, list[int]] = {"L": [], "R": []}
+        self.dexterous_hand_joint_names: dict[str, list[str]] = {"L": [], "R": []}
         self.dexterous_hand_current_positions: dict[str, list[float]] = {"L": [], "R": []}
         self.dexterous_hand_target_positions: dict[str, list[float]] = {"L": [], "R": []}
         self.dexterous_hand_active_pose: dict[str, str] = {"L": "open", "R": "open"}
@@ -428,6 +430,7 @@ class IsaacSimRobotInterface:
         self._dexterous_hand_all_indices: list[int] = []
         self._dexterous_hand_drive_profile: Optional[str] = None
         self._dexterous_hand_drive_sides: tuple[str, ...] = ()
+        self._dexterous_hand_last_log_t: dict[str, float] = {"L": 0.0, "R": 0.0}
         self._standing_control_indices: list[int] = []
         self.body_joint_indices: list[int] = []
         self.head_joint_indices: list[int] = []
@@ -495,8 +498,19 @@ class IsaacSimRobotInterface:
     def _articulation_physics_ready(self) -> bool:
         return self._articulation is not None and hasattr(self._articulation, "_physics_view")
 
+    @staticmethod
+    def _resolve_joint_name(all_joint_names: list[str], canonical_name: str) -> str | None:
+        if canonical_name in all_joint_names:
+            return canonical_name
+        suffix = f"_{canonical_name}"
+        matches = [name for name in all_joint_names if name.endswith(suffix)]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
     def _initialize_dexterous_hand_joints(self, all_joint_names: list[str]) -> None:
         self.dexterous_hand_joint_indices = {"L": [], "R": []}
+        self.dexterous_hand_joint_names = {"L": [], "R": []}
         self.dexterous_hand_current_positions = {"L": [], "R": []}
         self.dexterous_hand_target_positions = {"L": [], "R": []}
         self.dexterous_hand_active_pose = {"L": "open", "R": "open"}
@@ -505,10 +519,12 @@ class IsaacSimRobotInterface:
         for side in ("L", "R"):
             missing = []
             for joint_name in UBT_HAND_JOINT_NAMES[side]:
-                if joint_name in all_joint_names:
+                actual_joint_name = self._resolve_joint_name(all_joint_names, joint_name)
+                if actual_joint_name is not None:
                     self.dexterous_hand_joint_indices[side].append(
-                        all_joint_names.index(joint_name)
+                        all_joint_names.index(actual_joint_name)
                     )
+                    self.dexterous_hand_joint_names[side].append(actual_joint_name)
                 else:
                     missing.append(joint_name)
 
@@ -519,6 +535,7 @@ class IsaacSimRobotInterface:
                     missing,
                 )
                 self.dexterous_hand_joint_indices[side] = []
+                self.dexterous_hand_joint_names[side] = []
                 continue
 
             open_pose = self._pose_values_for_side(side, "open")
@@ -603,6 +620,21 @@ class IsaacSimRobotInterface:
         self.dexterous_hand_target_positions[side] = next_target.astype(np.float32).tolist()
         self.dexterous_hand_active_pose[side] = "manual"
         self.dexterous_hand_close_pose[side] = close_pose
+        now = time.time()
+        if now - self._dexterous_hand_last_log_t.get(side, 0.0) >= 0.5:
+            self._dexterous_hand_last_log_t[side] = now
+            progress = np.divide(
+                next_target - open_values,
+                close_values - open_values,
+                out=np.zeros_like(next_target),
+                where=np.abs(close_values - open_values) > 1e-6,
+            )
+            logger.info(
+                "Dexterous %s hand target updated: pose=%s mean_close=%.3f effort_profile=contact",
+                side,
+                close_pose,
+                float(np.mean(progress)),
+            )
 
     def preshape_dexterous_hand(self, side: str, pose_name: str) -> None:
         preshape = f"{pose_name}_pre"
@@ -861,6 +893,11 @@ class IsaacSimRobotInterface:
             for side_names in UBT_HAND_JOINT_NAMES.values()
             for joint_name in side_names
         }
+        hand_joint_names.update(
+            joint_name
+            for side_names in self.dexterous_hand_joint_names.values()
+            for joint_name in side_names
+        )
         kps = []
         kds = []
         max_efforts = []

@@ -32,7 +32,7 @@ elif [[ -d "${SCRIPT_DIR}/../WalkerS2-Model" ]]; then
   export ZOLLENT_REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 fi
 
-URDF_REL="WalkerS2-Model/walker_s2_official/walker_s2.urdf"
+URDF_REL="WalkerS2-Model/walker_s2_description_hand3_v1_left_hand3_v1_right/walker_s2_description_hand3_v1_left_hand3_v1_right.urdf"
 URDF_CANDIDATES=(
   "${ZOLLENT_REPO_ROOT:-}/${URDF_REL}"
   "${SCRIPT_DIR}/assets/resources/${URDF_REL}"
@@ -46,7 +46,7 @@ for candidate in "${URDF_CANDIDATES[@]}"; do
 done
 if [[ -z "$URDF_FOUND" ]]; then
   echo "Missing URDF: ${URDF_REL}" >&2
-  echo "Run on the host: python3 scripts/setup_official_walker_s2.py" >&2
+  echo "Extract the official combined URDF zip under WalkerS2-Model/." >&2
   echo "If using Docker, restart the container via ./run.sh so WalkerS2-Model is mounted." >&2
   exit 1
 fi
