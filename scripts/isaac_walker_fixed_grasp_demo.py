@@ -17,10 +17,13 @@ import argparse
 import sys
 import os
 import math
+import queue
+import traceback
 import time
 import shutil
 import struct
 import subprocess
+import threading
 import textwrap
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -29,7 +32,7 @@ import numpy as np
 
 
 HEAD_CAMERA_WIDTH = 640
-HEAD_CAMERA_HEIGHT = 512
+HEAD_CAMERA_HEIGHT = 480
 
 
 def find_challenge_repo_root() -> Path:
@@ -417,13 +420,11 @@ def draw_usd_hand_collider_debug_boxes(stage, UsdGeom, Gf, robot_prim_path: str,
 
 def create_robot_cameras(stage, UsdGeom, Gf, robot_prim_path: str):
     camera_specs = (
-        # The challenge USD optical centers are x=0.10704, which is inside this
-        # URDF's solid head mesh. Move only along the unchanged viewing axis.
-        ("head_left", "head_stereo_left", (0.125, 0.13247, -0.03199), "head_stereo_left_Camera.usd"),
-        ("head_right", "head_stereo_right", (0.125, 0.13247, 0.03199), "head_stereo_right_Camera.usd"),
-    )
-    camera_asset_dir = (
-        find_challenge_repo_root() / "assets/resources/Collected_s2_v1_ecbg/SubUSDs"
+        # The challenge USD optical center uses x=0.10704. This URDF's head mesh
+        # blocks that pose, so keep the official orientation but move the mount
+        # slightly outward.
+        ("head_left", "head_stereo_left", (0.125, 0.13247, -0.03199)),
+        ("head_right", "head_stereo_right", (0.125, 0.13247, 0.03199)),
     )
 
     camera_paths = {}
@@ -432,7 +433,7 @@ def create_robot_cameras(stage, UsdGeom, Gf, robot_prim_path: str):
         print(f"[WARN] Camera parent link not found: {head_path}")
         return camera_paths
 
-    for name, mount_name, translation, asset_name in camera_specs:
+    for name, mount_name, translation in camera_specs:
         mount_path = f"{head_path}/{mount_name}"
         mount = UsdGeom.Xform.Define(stage, mount_path)
         mount_xform = UsdGeom.Xformable(mount.GetPrim())
@@ -443,15 +444,22 @@ def create_robot_cameras(stage, UsdGeom, Gf, robot_prim_path: str):
         )
 
         camera_path = f"{mount_path}/{mount_name}_Camera_01"
-        camera_asset = camera_asset_dir / asset_name
-        if not camera_asset.exists():
-            print(f"[WARN] Challenge camera asset not found: {camera_asset}")
-            continue
-        camera_prim = stage.OverridePrim(camera_path)
-        camera_prim.GetReferences().AddReference(str(camera_asset), "/Camera")
-        camera = UsdGeom.Camera(camera_prim)
+        camera = UsdGeom.Camera.Define(stage, camera_path)
+        camera_xform = UsdGeom.Xformable(camera.GetPrim())
+        camera_xform.ClearXformOpOrder()
+        camera_xform.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, 0.0))
+        camera_xform.AddOrientOp(UsdGeom.XformOp.PrecisionDouble).Set(
+            Gf.Quatd(0.5, Gf.Vec3d(0.5, -0.5, -0.5))
+        )
+        camera.CreateProjectionAttr("perspective")
+        # Same FOV ratio as the challenge stereo cameras, scaled up to avoid
+        # the tiny exported USD values that can break RGB render-product setup.
+        camera.CreateFocalLengthAttr(23.316089063882828)
+        camera.CreateHorizontalApertureAttr(57.5999990105629)
+        camera.CreateVerticalApertureAttr(46.08000069856644)
+        camera.CreateClippingRangeAttr(Gf.Vec2f(0.05, 100000.0))
         camera.GetFStopAttr().Set(0.0)
-        camera.GetFocusDistanceAttr().Set(0.5)
+        camera.GetFocusDistanceAttr().Set(400.0)
         camera_paths[name] = camera_path
 
     return camera_paths
@@ -472,6 +480,62 @@ def create_camera_capture_viewports(camera_paths):
         except Exception as exc:
             print(f"[WARN] Could not create capture viewport for {name}: {exc}")
     return viewports
+
+
+class DirectRgbCameraSensor:
+    """RGB readback without Camera.initialize(), which attaches ReferenceTime."""
+
+    def __init__(self, name, camera_path):
+        import omni.replicator.core as rep
+
+        self._annotator = None
+        self._render_product = None
+        try:
+            self._render_product = rep.create.render_product(
+                camera_path,
+                resolution=(HEAD_CAMERA_WIDTH, HEAD_CAMERA_HEIGHT),
+                name=f"walker_{name}_rgb",
+            )
+            self._annotator = rep.AnnotatorRegistry.get_annotator("rgb", do_array_copy=True)
+            self._annotator.attach([self._render_product.path])
+        except Exception:
+            self.destroy()
+            raise
+
+    def get_rgb(self):
+        data = self._annotator.get_data()
+        if data is None or getattr(data, "size", 0) == 0:
+            return None
+        return np.asarray(data)[:, :, :3]
+
+    def destroy(self):
+        if self._annotator is not None and self._render_product is not None:
+            try:
+                self._annotator.detach([self._render_product.path])
+            except Exception:
+                pass
+        self._annotator = None
+        if self._render_product is not None:
+            try:
+                self._render_product.destroy()
+            except Exception:
+                pass
+        self._render_product = None
+
+
+def create_head_camera_sensors(camera_paths, world=None):
+    sensors = {}
+    for name, camera_path in camera_paths.items():
+        try:
+            sensors[name] = DirectRgbCameraSensor(name, camera_path)
+            if world is not None:
+                world.step(render=True)
+                world.step(render=True)
+            print(f"[INFO] Initialized direct RGB head camera: {name}")
+        except Exception as exc:
+            print(f"[WARN] Direct RGB camera unavailable for {name}: {exc}")
+            traceback.print_exc()
+    return sensors
 
 
 def schedule_viewport_capture(name, viewport_api, state):
@@ -529,10 +593,16 @@ class HeadCameraCvViewer:
         self.window_y = int(window_y)
         self.proc = None
         self.started = False
+        self._stop_event = threading.Event()
+        self._send_queue = queue.Queue(maxsize=2)
+        self._sender_thread = None
 
         try:
             self.proc = self._start_viewer_process()
             self.started = self.proc is not None and self.proc.poll() is None
+            if self.started:
+                self._sender_thread = threading.Thread(target=self._send_loop, daemon=True)
+                self._sender_thread.start()
             self.update({})
         except Exception as exc:
             print(f"[WARN] Could not open camera viewer process: {exc}")
@@ -744,16 +814,34 @@ if __name__ == "__main__":
         height, width = int(canvas.shape[0]), int(canvas.shape[1])
         payload = canvas.tobytes()
         try:
-            self.proc.stdin.write(struct.pack("<4sIII", b"FRAM", width, height, len(payload)))
-            self.proc.stdin.write(payload)
-            self.proc.stdin.flush()
-        except Exception as exc:
-            print(f"[WARN] Camera viewer process stopped: {exc}")
-            self.started = False
+            if self._send_queue.full():
+                self._send_queue.get_nowait()
+            self._send_queue.put_nowait((width, height, payload))
+        except queue.Full:
+            pass
+
+    def _send_loop(self):
+        while not self._stop_event.is_set():
+            try:
+                width, height, payload = self._send_queue.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            try:
+                self.proc.stdin.write(struct.pack("<4sIII", b"FRAM", width, height, len(payload)))
+                self.proc.stdin.write(payload)
+                self.proc.stdin.flush()
+            except Exception as exc:
+                print(f"[WARN] Camera viewer process stopped: {exc}")
+                self.started = False
+                return
 
     def close(self):
         if self.proc is None:
             return
+        self._stop_event.set()
+        if self._sender_thread is not None:
+            self._sender_thread.join(timeout=1.0)
+            self._sender_thread = None
         try:
             if self.proc.stdin is not None:
                 self.proc.stdin.close()
@@ -805,40 +893,6 @@ def set_object_position(obj, stage, UsdGeom, Gf, prim_path: str, xyz):
         translate_ops[0].Set(Gf.Vec3d(float(xyz[0]), float(xyz[1]), float(xyz[2])))
     else:
         xform.AddTranslateOp().Set(Gf.Vec3d(float(xyz[0]), float(xyz[1]), float(xyz[2])))
-
-
-def wait_for_grasp_key(sim_app, step_fn, hold_fn, render):
-    if not render:
-        return True
-
-    try:
-        import carb
-        import omni.appwindow
-
-        app_window = omni.appwindow.get_default_app_window()
-        keyboard = app_window.get_keyboard()
-        input_interface = carb.input.acquire_input_interface()
-    except Exception:
-        print("[WARN] Could not access Isaac keyboard input; starting grasp immediately.")
-        return True
-
-    triggered = False
-
-    def on_keyboard_event(event, *args):
-        nonlocal triggered
-        if event.type == carb.input.KeyboardEventType.KEY_PRESS and event.input == carb.input.KeyboardInput.G:
-            triggered = True
-        return True
-
-    subscription = input_interface.subscribe_to_keyboard_events(keyboard, on_keyboard_event)
-    print("[INFO] Ready. Focus the Isaac Sim window and press G to grasp and lift.")
-    try:
-        while sim_app.is_running() and not triggered:
-            hold_fn()
-            step_fn(render=True)
-    finally:
-        input_interface.unsubscribe_to_keyboard_events(keyboard, subscription)
-    return triggered
 
 
 def rotation_z(theta):
@@ -1154,8 +1208,21 @@ def main():
         "hand3_v1_right_R_little_ip_joint": 1.25,
     }
 
+    left_hand_open = {
+        name.replace("hand3_v1_right_R_", "hand3_v1_left_L_"): (
+            -value if "thumb_cmp_joint" in name else value
+        )
+        for name, value in right_hand_open.items()
+    }
+    left_hand_close = {
+        name.replace("hand3_v1_right_R_", "hand3_v1_left_L_"): (
+            -value if "thumb_cmp_joint" in name else value
+        )
+        for name, value in right_hand_close.items()
+    }
+
     q_ready = set_named(q_home, ready_arm_pose)
-    q_ready_open = set_named(q_ready, right_hand_open)
+    q_ready_open = set_named(set_named(q_ready, left_hand_open), right_hand_open)
     palm_normal_world = rotation_z(math.radians(robot_yaw_deg)) @ np.array([0.0, 1.0, 0.0])
     grasp_world_nudge = (
         np.asarray(args.palm_world_nudge, dtype=float)
@@ -1219,6 +1286,14 @@ def main():
     right_hand_indices = np.array([name_to_i[n] for n in right_hand_joint_names], dtype=int)
     right_hand_open_pos = np.array([right_hand_open[n] for n in right_hand_joint_names], dtype=float)
     right_hand_close_pos = np.array([right_hand_close[n] for n in right_hand_joint_names], dtype=float)
+    left_hand_joint_names = list(left_hand_open.keys())
+    left_hand_indices = np.array([name_to_i[n] for n in left_hand_joint_names], dtype=int)
+    left_hand_open_pos = np.array([left_hand_open[n] for n in left_hand_joint_names], dtype=float)
+    left_hand_close_pos = np.array([left_hand_close[n] for n in left_hand_joint_names], dtype=float)
+    hand_control = {
+        "left": (left_hand_indices, left_hand_open_pos, left_hand_close_pos),
+        "right": (right_hand_indices, right_hand_open_pos, right_hand_close_pos),
+    }
     q_grasp_closed = q_grasp_open.copy()
     q_grasp_closed[right_hand_indices] = right_hand_close_pos
     q_lift_closed = q_lift_open.copy()
@@ -1257,23 +1332,38 @@ def main():
 
     camera_capture_viewports = {}
     camera_capture_state = {"frames": {}, "pending": set(), "captures": [], "logged": False}
+    camera_sensors = {}
     camera_viewer = None
     if args.enable_robot_cameras and camera_paths and not args.headless and args.camera_view_windows:
         camera_viewer = HeadCameraCvViewer(scale=args.camera_viewer_scale)
         if camera_viewer.started:
             print("[INFO] Opened draggable head-camera viewer: walker_s2_cameras")
-            camera_capture_viewports = create_camera_capture_viewports(camera_paths)
-            print(
-                "[INFO] Created head camera capture viewports: "
-                f"{len(camera_capture_viewports)}/{len(camera_paths)}"
-            )
+            camera_sensors = create_head_camera_sensors(camera_paths, world=world)
+            fallback_paths = {
+                name: path for name, path in camera_paths.items() if name not in camera_sensors
+            }
+            if fallback_paths:
+                camera_capture_viewports = create_camera_capture_viewports(fallback_paths)
+                print(
+                    "[INFO] Created fallback camera capture viewports: "
+                    f"{len(camera_capture_viewports)}/{len(fallback_paths)}"
+                )
 
     def update_camera_viewer():
         if camera_viewer is None:
             return
         update_camera_viewer.frame_count += 1
-        if update_camera_viewer.frame_count < 4 or update_camera_viewer.frame_count % 4 != 0:
+        if update_camera_viewer.frame_count < 2 or update_camera_viewer.frame_count % 2 != 0:
             return
+        for name, sensor in camera_sensors.items():
+            try:
+                frame = sensor.get_rgb()
+                if frame is not None:
+                    camera_capture_state["frames"][name] = np.asarray(frame)
+            except Exception as exc:
+                if name not in update_camera_viewer.failed_sensors:
+                    update_camera_viewer.failed_sensors.add(name)
+                    print(f"[WARN] Could not read direct camera sensor {name}: {exc}")
         for name, widget in camera_capture_viewports.items():
             try:
                 schedule_viewport_capture(name, widget.viewport_api, camera_capture_state)
@@ -1287,11 +1377,28 @@ def main():
                 name: None if frame is None else tuple(np.asarray(frame).shape)
                 for name, frame in frames.items()
             }
+            stats = {}
+            for name, frame in frames.items():
+                arr = np.asarray(frame)
+                if arr.size:
+                    stats[name] = {
+                        "min": float(np.nanmin(arr)),
+                        "max": float(np.nanmax(arr)),
+                        "mean": float(np.nanmean(arr)),
+                    }
             print(f"[INFO] Head camera frame shapes: {shapes}")
+            print(f"[INFO] Head camera frame stats: {stats}")
             update_camera_viewer.logged_frame_shapes = True
         camera_viewer.update(frames)
     update_camera_viewer.frame_count = 0
     update_camera_viewer.logged_frame_shapes = False
+    update_camera_viewer.failed_sensors = set()
+
+    def close_camera_resources():
+        for sensor in camera_sensors.values():
+            sensor.destroy()
+        if camera_viewer is not None:
+            camera_viewer.close()
 
     def step_world(render=True):
         world.step(render=render)
@@ -1317,17 +1424,89 @@ def main():
         apply_full_body(q_ready_open)
         step_world(render=render)
 
-    if not wait_for_grasp_key(sim_app, step_world, lambda: apply_full_body(q_ready_open), render):
-        if camera_viewer is not None:
-            camera_viewer.close()
-        sim_app.close()
-        return
+    q_teleop = q_ready_open.copy()
+    if render:
+        baseline_dir = find_challenge_repo_root()
+        if str(baseline_dir) not in sys.path:
+            sys.path.insert(0, str(baseline_dir))
+        src_dir = baseline_dir / "src"
+        if str(src_dir) not in sys.path:
+            sys.path.insert(0, str(src_dir))
+        from walker_s2_grasp_sim import WalkerS2CartesianController, WalkerS2GraspKeyboard
+
+        cartesian_controller = WalkerS2CartesianController(
+            urdf_for_import,
+            dof_names,
+            q_ready_open,
+        )
+        teleop = WalkerS2GraspKeyboard()
+        teleop.connect()
+        print("[TELEOP] W/S: X  A/D: Y  R/F: Z")
+        print("[TELEOP] Y/U: roll  V/B: pitch  N/M: yaw")
+        print("[TELEOP] O: switch arm  0: bimanual  K/L: open/close hand")
+        print("[TELEOP] +/-: speed  H: home  G: automatic grasp and lift  Q: quit")
+
+        def run_manual_teleop(q_start, allow_grasp):
+            q_command = np.asarray(q_start, dtype=float).copy()
+            grasp_requested = False
+            quit_requested = False
+            while sim_app.is_running() and not grasp_requested and not quit_requested:
+                command = teleop.sample()
+                grasp_requested = command.assisted_grasp and allow_grasp
+                quit_requested = command.quit
+                if command.assisted_grasp and not allow_grasp:
+                    print("[TELEOP] The object is already lifted; press H to return home or Q to quit")
+
+                if command.go_home:
+                    q_home_start = q_command.copy()
+                    for i in range(120):
+                        a = (i + 1) / 120.0
+                        s = a * a * (3.0 - 2.0 * a)
+                        q_command = (1.0 - s) * q_home_start + s * q_ready_open
+                        apply_full_body(q_command)
+                        step_world(render=True)
+                    cartesian_controller.reset(q_command)
+                    print("[TELEOP] Returned to ready pose")
+                    continue
+
+                q_command, ik_status = cartesian_controller.step(q_command, command.arm_deltas)
+                if ik_status and not all(ik_status.values()):
+                    now = time.monotonic()
+                    if now - run_manual_teleop.last_ik_warning_time > 1.0:
+                        run_manual_teleop.last_ik_warning_time = now
+                        print(f"[TELEOP] IK did not fully converge: {ik_status}")
+                if abs(command.hand_delta) > 0.0:
+                    for side in command.target_sides:
+                        indices, open_pos, close_pos = hand_control[side]
+                        q_command[indices] = np.clip(
+                            q_command[indices] + command.hand_delta * (close_pos - open_pos),
+                            np.minimum(open_pos, close_pos),
+                            np.maximum(open_pos, close_pos),
+                        )
+
+                apply_full_body(q_command)
+                step_world(render=True)
+            return q_command, grasp_requested, quit_requested
+        run_manual_teleop.last_ik_warning_time = 0.0
+
+        q_teleop, grasp_requested, quit_requested = run_manual_teleop(
+            q_teleop,
+            allow_grasp=True,
+        )
+
+        if quit_requested or not grasp_requested:
+            teleop.close()
+            close_camera_resources()
+            sim_app.close()
+            return
+    else:
+        print("[INFO] Headless mode: starting the automatic grasp immediately.")
 
     print(f"[INFO] Moving from ready pose to pregrasp ({args.pregrasp_distance:.3f} m clearance).")
     for i in range(args.pregrasp_steps):
         a = (i + 1) / float(args.pregrasp_steps)
         s = a * a * (3.0 - 2.0 * a)
-        q = (1.0 - s) * q_ready_open + s * q_pregrasp_open
+        q = (1.0 - s) * q_teleop + s * q_pregrasp_open
         apply_full_body(q)
         step_world(render=render)
 
@@ -1355,13 +1534,19 @@ def main():
         apply_full_body(q)
         step_world(render=render)
 
-    for _ in range(args.duration_after):
-        apply_full_body(q_lift_closed)
-        step_world(render=render)
+    if render:
+        q_teleop = q_lift_closed.copy()
+        cartesian_controller.reset(q_teleop)
+        print("[TELEOP] Grasp complete. Manual keyboard control remains active; press Q to quit.")
+        run_manual_teleop(q_teleop, allow_grasp=False)
+        teleop.close()
+    else:
+        for _ in range(args.duration_after):
+            apply_full_body(q_lift_closed)
+            step_world(render=False)
 
     print("[INFO] Done. Tune --object-palm-offset if the cube is not in the palm contact area.")
-    if camera_viewer is not None:
-        camera_viewer.close()
+    close_camera_resources()
     sim_app.close()
 
 

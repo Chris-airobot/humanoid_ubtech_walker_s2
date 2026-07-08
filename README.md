@@ -90,3 +90,40 @@ Run the teleop script
 ```
 ./teleop_part_sorting.sh
 ```
+
+### Walker Fixed-Grasp Teleop
+
+Launch the independently developed Walker S2 grasp simulation:
+
+```bash
+./teleop_walker_grasp.sh
+```
+
+After the scene settles, focus the Isaac Sim window. The keyboard controls are:
+
+| Keys | Action |
+|---|---|
+| `W/S`, `A/D`, `R/F` | Move the selected hand along X, Y, Z |
+| `Y/U`, `V/B`, `N/M` | Rotate the selected hand in roll, pitch, yaw |
+| `O` | Switch between the left and right arm |
+| `0` | Toggle mirrored bimanual control |
+| `K/L` | Open or close the selected hand |
+| `+/-` | Change the Cartesian motion step |
+| `H` | Return to the ready pose |
+| `G` | Run pregrasp, grasp, close, and lift |
+| `Q` | Quit |
+
+Arguments for the underlying demo can be passed directly, for example:
+
+```bash
+./teleop_walker_grasp.sh --show-hand-colliders --lift-height 0.10
+```
+
+The launcher uses the URDF under `assets/resources` by default. Override the
+Isaac Sim Python or robot URDF paths when needed:
+
+```bash
+ISAAC_SIM_PYTHON=/path/to/isaacsim/python.sh \
+WALKER_S2_URDF=/path/to/walker_s2.urdf \
+./teleop_walker_grasp.sh
+```
