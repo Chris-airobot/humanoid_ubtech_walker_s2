@@ -174,12 +174,19 @@ def parse_args():
         default=1.0,
         help="Display scale for the draggable head-camera viewer",
     )
+    p.add_argument(
+        "--camera-capture-backend",
+        choices=("viewport", "direct"),
+        default="viewport",
+        help="How to read head camera images. 'viewport' avoids Replicator render-product errors.",
+    )
     p.add_argument("--lift-height", type=float, default=0.08, help="World-Z lift height after closing the grasp")
     p.add_argument("--grasp-clearance", type=float, default=0.0, help="Optional retreat along the palm normal")
     p.add_argument("--pregrasp-distance", type=float, default=0.08, help="Palm-normal clearance before the grasp pose")
     p.add_argument("--pregrasp-steps", type=int, default=240, help="Number of sim steps from ready pose to pregrasp")
     p.add_argument("--approach-steps", type=int, default=180, help="Number of sim steps from pregrasp to grasp pose")
     p.add_argument("--lift-steps", type=int, default=180, help="Number of sim steps for the post-grasp lift")
+    p.add_argument("--debug-ready-pose", action="store_true", help="Print full ready-pose diagnostics before G.")
     p.add_argument("--record-dataset-root", default="", help="Record one episode to this local LeRobot dataset root")
     p.add_argument("--record-repo-id", default="walker_s2_grasp", help="LeRobot repo_id stored in dataset metadata")
     p.add_argument("--record-task", default="pick the block and place it in the tray", help="Task string saved with recorded frames")
@@ -195,6 +202,12 @@ def parse_args():
         choices=("task", "launch"),
         default="task",
         help="When to start saving frames. 'task' starts at the automatic grasp trigger; 'launch' records teleop waiting too.",
+    )
+    p.add_argument(
+        "--record-episodes",
+        type=int,
+        default=1,
+        help="Number of episodes to collect before closing. Use 0 to keep collecting until Q is pressed.",
     )
     p.add_argument("--replay-dataset-root", default="", help="Replay actions from this local LeRobot dataset root")
     p.add_argument("--replay-repo-id", default="walker_s2_grasp", help="LeRobot repo_id for replay metadata")
@@ -968,6 +981,73 @@ def set_object_position(obj, stage, UsdGeom, Gf, prim_path: str, xyz):
         xform.AddTranslateOp().Set(Gf.Vec3d(float(xyz[0]), float(xyz[1]), float(xyz[2])))
 
 
+READY_DEBUG_JOINTS = [
+    "waist_yaw_joint",
+    "waist_pitch_joint",
+    "L_shoulder_pitch_joint",
+    "L_shoulder_roll_joint",
+    "L_shoulder_yaw_joint",
+    "L_elbow_roll_joint",
+    "L_elbow_yaw_joint",
+    "L_wrist_pitch_joint",
+    "L_wrist_roll_joint",
+    "R_shoulder_pitch_joint",
+    "R_shoulder_roll_joint",
+    "R_shoulder_yaw_joint",
+    "R_elbow_roll_joint",
+    "R_elbow_yaw_joint",
+    "R_wrist_pitch_joint",
+    "R_wrist_roll_joint",
+]
+
+READY_DEBUG_LINKS = [
+    "L_shoulder_pitch_link",
+    "L_elbow_yaw_link",
+    "L_wrist_roll_link",
+    "hand3_v1_left_L_palm_link",
+    "R_shoulder_pitch_link",
+    "R_elbow_yaw_link",
+    "R_wrist_roll_link",
+    "hand3_v1_right_R_palm_link",
+]
+
+
+def _find_child_prim_by_name(root_prim, name):
+    for prim in root_prim.GetStage().Traverse():
+        if prim.GetName() == name and str(prim.GetPath()).startswith(str(root_prim.GetPath())):
+            return prim
+    return None
+
+
+def print_ready_pose_debug(stage, UsdGeom, robot_prim_path, robot, dof_names, q_target, label):
+    from pxr import Usd
+
+    q_actual = get_joint_positions(robot, len(dof_names))
+    name_to_i = {name: index for index, name in enumerate(dof_names)}
+    root_prim = stage.GetPrimAtPath(robot_prim_path)
+    print(f"[READY_DEBUG {label}] num_joints={len(dof_names)}")
+    for joint_name in READY_DEBUG_JOINTS:
+        index = name_to_i.get(joint_name)
+        if index is None:
+            print(f"[READY_DEBUG {label}] joint {joint_name}: missing")
+            continue
+        actual = float(q_actual[index]) if index < len(q_actual) else float("nan")
+        target = float(q_target[index])
+        print(
+            f"[READY_DEBUG {label}] joint {joint_name}: "
+            f"target={target: .9f} actual={actual: .9f} error={actual - target: .9f}"
+        )
+    for link_name in READY_DEBUG_LINKS:
+        prim = _find_child_prim_by_name(root_prim, link_name)
+        if prim is None or not prim.IsValid():
+            print(f"[READY_DEBUG {label}] body {link_name}: missing")
+            continue
+        pos = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default()).ExtractTranslation()
+        print(f"[READY_DEBUG {label}] body {link_name}: pos={[float(pos[0]), float(pos[1]), float(pos[2])]}")
+    print(f"[READY_DEBUG {label}] full_q_target={np.asarray(q_target, dtype=float).tolist()}")
+    print(f"[READY_DEBUG {label}] full_q_actual={np.asarray(q_actual, dtype=float).tolist()}")
+
+
 def set_prim_display_color(stage, UsdGeom, Gf, prim_path: str, color, opacity=1.0):
     prim = stage.GetPrimAtPath(prim_path)
     if not prim.IsValid():
@@ -1496,15 +1576,22 @@ def main():
         camera_viewer = HeadCameraCvViewer(scale=args.camera_viewer_scale)
         if camera_viewer.started:
             print("[INFO] Opened draggable head-camera viewer: walker_s2_cameras")
-            camera_sensors = create_head_camera_sensors(camera_paths, world=world)
-            fallback_paths = {
-                name: path for name, path in camera_paths.items() if name not in camera_sensors
-            }
-            if fallback_paths:
-                camera_capture_viewports = create_camera_capture_viewports(fallback_paths)
+            if args.camera_capture_backend == "direct":
+                camera_sensors = create_head_camera_sensors(camera_paths, world=world)
+                fallback_paths = {
+                    name: path for name, path in camera_paths.items() if name not in camera_sensors
+                }
+                if fallback_paths:
+                    camera_capture_viewports = create_camera_capture_viewports(fallback_paths)
+                    print(
+                        "[INFO] Created fallback camera capture viewports: "
+                        f"{len(camera_capture_viewports)}/{len(fallback_paths)}"
+                    )
+            else:
+                camera_capture_viewports = create_camera_capture_viewports(camera_paths)
                 print(
-                    "[INFO] Created fallback camera capture viewports: "
-                    f"{len(camera_capture_viewports)}/{len(fallback_paths)}"
+                    "[INFO] Created viewport camera captures: "
+                    f"{len(camera_capture_viewports)}/{len(camera_paths)}"
                 )
 
     def update_camera_viewer():
@@ -1555,6 +1642,14 @@ def main():
     def close_camera_resources():
         for sensor in camera_sensors.values():
             sensor.destroy()
+        for widget in camera_capture_viewports.values():
+            for method in ("destroy", "close"):
+                if hasattr(widget, method):
+                    try:
+                        getattr(widget, method)()
+                    except Exception:
+                        pass
+                    break
         if camera_viewer is not None:
             camera_viewer.close()
 
@@ -1602,7 +1697,15 @@ def main():
 
     def finish_recording():
         if recorder is not None:
-            recorder.save()
+            recorder.finalize()
+
+    def save_recording_episode():
+        if recorder is not None:
+            recorder.save_episode()
+
+    def discard_recording_episode():
+        if recorder is not None:
+            recorder.discard_episode()
 
     def start_recording(reason):
         nonlocal recording_active, record_step_counter
@@ -1611,6 +1714,50 @@ def main():
         recording_active = True
         record_step_counter = 0
         print(f"[INFO] Started recording: {reason}")
+
+    def stop_recording():
+        nonlocal recording_active
+        recording_active = args.record_start == "launch"
+
+    def reset_episode_scene():
+        nonlocal q_teleop, camera_sensors
+        stop_recording()
+        for sensor in camera_sensors.values():
+            sensor.destroy()
+        camera_sensors = {}
+        camera_capture_state["frames"].clear()
+        camera_capture_state["pending"].clear()
+        camera_capture_state["captures"].clear()
+        if hasattr(robot, "set_joints_default_state"):
+            try:
+                robot.set_joints_default_state(positions=q_ready_open)
+            except Exception:
+                pass
+        world.reset()
+        try:
+            robot.initialize()
+        except Exception:
+            pass
+        set_joint_positions(robot, q_ready_open)
+        set_object_position(cube, stage, UsdGeom, Gf, "/World/grasp_cube", object_center)
+        for method in ("set_linear_velocity", "set_angular_velocity"):
+            if hasattr(cube, method):
+                try:
+                    getattr(cube, method)(np.zeros(3, dtype=float))
+                except Exception:
+                    pass
+        q_teleop = q_ready_open.copy()
+        for _ in range(90):
+            apply_full_body(q_ready_open)
+            step_world(render=render)
+        if (
+            args.camera_capture_backend == "direct"
+            and args.enable_robot_cameras
+            and camera_paths
+            and not args.headless
+            and camera_viewer is not None
+        ):
+            camera_sensors = create_head_camera_sensors(camera_paths, world=world)
 
     print(f"[INFO] Fixed arm reference center: {fixed_arm_reference_center.tolist()}")
     print(f"[INFO] Placed cube at {object_center.tolist()}")
@@ -1641,6 +1788,8 @@ def main():
     for _ in range(180):
         apply_full_body(q_ready_open)
         step_world(render=render)
+    if args.debug_ready_pose:
+        print_ready_pose_debug(stage, UsdGeom, prim_path, robot, dof_names, q_ready_open, "OLD_DEMO_BEFORE_G")
 
     if replay_enabled:
         from walker_s2_grasp_sim import WalkerS2LeRobotReplay
@@ -1665,6 +1814,8 @@ def main():
         return
 
     q_teleop = q_ready_open.copy()
+    teleop = None
+    cartesian_controller = None
     if render:
         from walker_s2_grasp_sim import WalkerS2CartesianController, WalkerS2GraspKeyboard
 
@@ -1678,18 +1829,22 @@ def main():
         print("[TELEOP] W/S: X  A/D: Y  R/F: Z")
         print("[TELEOP] Y/U: roll  V/B: pitch  N/M: yaw")
         print("[TELEOP] O: switch arm  0: bimanual  K/L: open/close hand")
-        print("[TELEOP] +/-: speed  H: home  G: automatic grasp and lift  Q: quit")
+        print("[TELEOP] +/-: speed  H: home  G: automatic grasp and lift  P: save/reset episode  Q: quit")
 
-        def run_manual_teleop(q_start, allow_grasp):
+        def run_manual_teleop(q_start, allow_grasp, allow_save=False):
             q_command = np.asarray(q_start, dtype=float).copy()
             grasp_requested = False
+            save_requested = False
             quit_requested = False
-            while sim_app.is_running() and not grasp_requested and not quit_requested:
+            while sim_app.is_running() and not grasp_requested and not save_requested and not quit_requested:
                 command = teleop.sample()
                 grasp_requested = command.assisted_grasp and allow_grasp
                 quit_requested = command.quit
+                save_requested = command.save_episode and allow_save
                 if command.assisted_grasp and not allow_grasp:
-                    print("[TELEOP] The object is already lifted; press H to return home or Q to quit")
+                    print("[TELEOP] The object is already lifted; use teleop keys, P to save/reset, or Q to quit")
+                if command.save_episode and not allow_save:
+                    print("[RECORD] Nothing to save here. Press G to start an episode first.")
 
                 if command.go_home:
                     q_home_start = q_command.copy()
@@ -1722,75 +1877,114 @@ def main():
                 apply_full_body(q_command)
                 step_world(render=True)
                 maybe_record(q_command)
-            return q_command, grasp_requested, quit_requested
+            return q_command, grasp_requested, save_requested, quit_requested
         run_manual_teleop.last_ik_warning_time = 0.0
-
-        q_teleop, grasp_requested, quit_requested = run_manual_teleop(
-            q_teleop,
-            allow_grasp=True,
-        )
-
-        if quit_requested or not grasp_requested:
-            teleop.close()
-            finish_recording()
-            close_camera_resources()
-            sim_app.close()
-            return
     else:
         print("[INFO] Headless mode: starting the automatic grasp immediately.")
 
-    start_recording("automatic grasp motion")
+    collected_episodes = 0
+    requested_episodes = int(args.record_episodes)
+    while sim_app.is_running():
+        if render:
+            if record_enabled:
+                target = "unlimited" if requested_episodes <= 0 else str(requested_episodes)
+                print(
+                    "[RECORD] Waiting for episode "
+                    f"{collected_episodes + 1}/{target}. Press G to record, Q to finish."
+                )
+            q_teleop, grasp_requested, _, quit_requested = run_manual_teleop(
+                q_teleop,
+                allow_grasp=True,
+            )
 
-    print(f"[INFO] Moving from ready pose to pregrasp ({args.pregrasp_distance:.3f} m clearance).")
-    for i in range(args.pregrasp_steps):
-        a = (i + 1) / float(args.pregrasp_steps)
-        s = a * a * (3.0 - 2.0 * a)
-        q = (1.0 - s) * q_teleop + s * q_pregrasp_open
-        apply_full_body(q)
-        step_world(render=render)
-        maybe_record(q)
+            if quit_requested or not grasp_requested:
+                break
 
-    print("[INFO] Approaching from pregrasp to grasp pose.")
-    for i in range(args.approach_steps):
-        a = (i + 1) / float(args.approach_steps)
-        s = a * a * (3.0 - 2.0 * a)
-        q = (1.0 - s) * q_pregrasp_open + s * q_grasp_open
-        apply_full_body(q)
-        step_world(render=render)
-        maybe_record(q)
+        start_recording("automatic grasp motion")
 
-    print("[INFO] Closing hand.")
-    for i in range(240):
-        a = (i + 1) / 240.0
-        s = a * a * (3.0 - 2.0 * a)
-        hand_q = (1.0 - s) * right_hand_open_pos + s * right_hand_close_pos
-        q = full_body_with_right_hand(hand_q)
-        apply_full_body(q)
-        step_world(render=render)
-        maybe_record(q)
+        print(f"[INFO] Moving from ready pose to pregrasp ({args.pregrasp_distance:.3f} m clearance).")
+        for i in range(args.pregrasp_steps):
+            a = (i + 1) / float(args.pregrasp_steps)
+            s = a * a * (3.0 - 2.0 * a)
+            q = (1.0 - s) * q_teleop + s * q_pregrasp_open
+            apply_full_body(q)
+            step_world(render=render)
+            maybe_record(q)
 
-    print(f"[INFO] Lifting closed grasp by {args.lift_height:.3f} m.")
-    for i in range(args.lift_steps):
-        a = (i + 1) / float(args.lift_steps)
-        s = a * a * (3.0 - 2.0 * a)
-        q = (1.0 - s) * q_grasp_closed + s * q_lift_closed
-        apply_full_body(q)
-        step_world(render=render)
-        maybe_record(q)
+        print("[INFO] Approaching from pregrasp to grasp pose.")
+        for i in range(args.approach_steps):
+            a = (i + 1) / float(args.approach_steps)
+            s = a * a * (3.0 - 2.0 * a)
+            q = (1.0 - s) * q_pregrasp_open + s * q_grasp_open
+            apply_full_body(q)
+            step_world(render=render)
+            maybe_record(q)
 
-    if render:
-        q_teleop = q_lift_closed.copy()
-        cartesian_controller.reset(q_teleop)
-        print("[TELEOP] Grasp complete. Manual keyboard control remains active; press Q to quit.")
-        run_manual_teleop(q_teleop, allow_grasp=False)
+        print("[INFO] Closing hand.")
+        for i in range(240):
+            a = (i + 1) / 240.0
+            s = a * a * (3.0 - 2.0 * a)
+            hand_q = (1.0 - s) * right_hand_open_pos + s * right_hand_close_pos
+            q = full_body_with_right_hand(hand_q)
+            apply_full_body(q)
+            step_world(render=render)
+            maybe_record(q)
+
+        print(f"[INFO] Lifting closed grasp by {args.lift_height:.3f} m.")
+        for i in range(args.lift_steps):
+            a = (i + 1) / float(args.lift_steps)
+            s = a * a * (3.0 - 2.0 * a)
+            q = (1.0 - s) * q_grasp_closed + s * q_lift_closed
+            apply_full_body(q)
+            step_world(render=render)
+            maybe_record(q)
+
+        if record_enabled:
+            if render:
+                q_teleop = q_lift_closed.copy()
+                if cartesian_controller is not None:
+                    cartesian_controller.reset(q_teleop)
+                print(
+                    "[RECORD] Auto grasp/lift complete. Use teleop keys for corrections; "
+                    "press P to save/reset this episode, or Q to discard and finish."
+                )
+                q_teleop, _, save_requested, quit_requested = run_manual_teleop(
+                    q_teleop,
+                    allow_grasp=False,
+                    allow_save=True,
+                )
+                if quit_requested or not save_requested:
+                    discard_recording_episode()
+                    break
+            save_recording_episode()
+            stop_recording()
+            collected_episodes += 1
+            if requested_episodes > 0 and collected_episodes >= requested_episodes:
+                break
+            print("[INFO] Resetting scene for the next recording episode.")
+            reset_episode_scene()
+            if cartesian_controller is not None:
+                cartesian_controller.reset(q_teleop)
+            continue
+
+        if render:
+            q_teleop = q_lift_closed.copy()
+            cartesian_controller.reset(q_teleop)
+            print("[TELEOP] Grasp complete. Manual keyboard control remains active; press Q to quit.")
+            run_manual_teleop(q_teleop, allow_grasp=False)
+        else:
+            for _ in range(args.duration_after):
+                apply_full_body(q_lift_closed)
+                step_world(render=False)
+                maybe_record(q_lift_closed)
+        break
+
+    if teleop is not None:
         teleop.close()
-    else:
-        for _ in range(args.duration_after):
-            apply_full_body(q_lift_closed)
-            step_world(render=False)
-            maybe_record(q_lift_closed)
 
     print("[INFO] Done. Tune --object-palm-offset if the cube is not in the palm contact area.")
+    if recorder is not None and getattr(recorder, "frame_count", 0) > 0:
+        discard_recording_episode()
     finish_recording()
     close_camera_resources()
     sim_app.close()

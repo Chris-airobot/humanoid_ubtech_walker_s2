@@ -30,6 +30,7 @@ class WalkerS2GraspTeleopCommand:
     target_sides: tuple[str, ...] = ()
     go_home: bool = False
     assisted_grasp: bool = False
+    save_episode: bool = False
     quit: bool = False
 
 
@@ -64,7 +65,7 @@ class WalkerS2GraspKeyboard:
         enum_names = {
             "W": "w", "S": "s", "A": "a", "D": "d", "R": "r", "F": "f",
             "Y": "y", "U": "u", "V": "v", "B": "b", "N": "n", "M": "m",
-            "K": "k", "L": "l", "O": "o", "G": "g", "H": "h", "Q": "q",
+            "K": "k", "L": "l", "O": "o", "G": "g", "H": "h", "P": "p", "Q": "q",
             "KEY_0": "0", "NUMPAD_0": "0", "MINUS": "-", "EQUAL": "+",
         }
         self._input_to_label = {
@@ -115,6 +116,8 @@ class WalkerS2GraspKeyboard:
             self._events.add("home")
         elif label == "g":
             self._events.add("grasp")
+        elif label == "p":
+            self._events.add("save_episode")
         elif label == "q":
             self._events.add("quit")
         elif label in self.config.keymap:
@@ -178,5 +181,6 @@ class WalkerS2GraspKeyboard:
             target_sides=target_sides,
             go_home="home" in events,
             assisted_grasp="grasp" in events,
+            save_episode="save_episode" in events,
             quit="quit" in events,
         )
