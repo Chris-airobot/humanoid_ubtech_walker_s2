@@ -1173,6 +1173,7 @@ def solve_right_arm_to_cube(
     robot_yaw_deg,
     palm_tcp_offset,
     palm_world_nudge,
+    palm_rpy_nudge=(0.0, 0.0, 0.0),
 ):
     baseline_dir = find_challenge_repo_root()
     if str(baseline_dir) not in sys.path:
@@ -1215,6 +1216,7 @@ def solve_right_arm_to_cube(
     y_grasp = np.cross(z_grasp, x_grasp)
     y_grasp /= np.linalg.norm(y_grasp)
     desired_palm_R = np.column_stack([x_grasp, y_grasp, z_grasp])
+    desired_palm_R = desired_palm_R @ pin.rpy.rpyToMatrix(np.asarray(palm_rpy_nudge, dtype=float))
     desired_palm_pos = cube_base - desired_palm_R @ np.asarray(palm_tcp_offset, dtype=float) + palm_nudge_base
 
     target_ee_R = desired_palm_R @ ee_to_palm.rotation.T
@@ -1234,6 +1236,7 @@ def solve_right_arm_to_cube(
     )
     print(f"[INFO] IK cube base position: {cube_base.tolist()}")
     print(f"[INFO] IK palm world nudge: {np.asarray(palm_world_nudge, dtype=float).tolist()}")
+    print(f"[INFO] IK palm RPY nudge: {np.asarray(palm_rpy_nudge, dtype=float).tolist()}")
     print(
         "[INFO] Palm local axes in world: "
         f"+X={robot_base_pose_to_world(np.zeros(3), desired_palm_R, robot_xyz, robot_yaw_deg)[1][:, 0].tolist()}, "

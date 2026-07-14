@@ -22,6 +22,7 @@ from isaaclab.utils import configclass
 from isaaclab_walker_s2 import WALKER_S2_CFG
 
 from . import mdp
+from .actions import WalkerS2PalmIKActionCfg
 
 
 TABLE_CENTER = (0.75, 0.30, 1.02)
@@ -142,6 +143,27 @@ class ActionsCfg:
 
 
 @configclass
+class IKActionsCfg:
+    """Compact palm/grip action specifications for RL."""
+
+    palm_ik = WalkerS2PalmIKActionCfg(
+        asset_name="robot",
+        object_asset_name="object",
+        right_arm_joint_names=RIGHT_ARM_JOINTS,
+        right_hand_joint_names=RIGHT_HAND_JOINTS,
+        right_hand_open_command=RIGHT_HAND_OPEN_COMMAND,
+        right_hand_close_command=RIGHT_HAND_CLOSE_COMMAND,
+        default_nudge=(0.08, 0.0, 0.0),
+        nudge_min=(-0.03, -0.08, -0.04),
+        nudge_max=(0.12, 0.08, 0.14),
+        delta_scale=(0.01, 0.01, 0.01),
+        thumb_close_scale=0.8,
+        finger_close_scale=1.8,
+        quiet_ik=True,
+    )
+
+
+@configclass
 class ObservationsCfg:
     """Observation specifications for the MDP."""
 
@@ -209,20 +231,52 @@ class RewardsCfg:
 
     lift_object = RewTerm(
         func=mdp.lift_object_reward,
-        weight=4.0,
+        weight=8.0,
         params={"table_top_z": TABLE_TOP_Z, "lift_height": 0.08, "object_cfg": SceneEntityCfg("object")},
     )
 
+    lift_progress = RewTerm(
+        func=mdp.object_lift_progress_reward,
+        weight=4.0,
+        params={"initial_height": CUBE_CENTER[2], "lift_height": 0.08, "object_cfg": SceneEntityCfg("object")},
+    )
+
     object_to_target = RewTerm(
-        func=mdp.object_target_reward,
-        weight=8.0,
-        params={"target_pos": TARGET_POS, "std": 0.25, "object_cfg": SceneEntityCfg("object")},
+        func=mdp.lifted_object_target_reward,
+        weight=10.0,
+        params={
+            "target_pos": TARGET_POS,
+            "std": 0.25,
+            "initial_height": CUBE_CENTER[2],
+            "min_lift": 0.03,
+            "object_cfg": SceneEntityCfg("object"),
+        },
+    )
+
+    place_on_target = RewTerm(
+        func=mdp.placed_on_target_reward,
+        weight=30.0,
+        params={
+            "target_pos": TARGET_POS,
+            "target_size": TARGET_SIZE,
+            "initial_height": CUBE_CENTER[2],
+            "height_tolerance": 0.04,
+            "max_speed": 0.25,
+            "object_cfg": SceneEntityCfg("object"),
+        },
     )
 
     success = RewTerm(
-        func=mdp.success_reward,
+        func=mdp.placed_on_target_reward,
         weight=20.0,
-        params={"target_pos": TARGET_POS, "threshold": 0.08, "object_cfg": SceneEntityCfg("object")},
+        params={
+            "target_pos": TARGET_POS,
+            "target_size": TARGET_SIZE,
+            "initial_height": CUBE_CENTER[2],
+            "height_tolerance": 0.04,
+            "max_speed": 0.25,
+            "object_cfg": SceneEntityCfg("object"),
+        },
     )
 
     action_rate = RewTerm(func=base_mdp.action_rate_l2, weight=-1e-4)
@@ -246,8 +300,15 @@ class TerminationsCfg:
     )
 
     success = DoneTerm(
-        func=mdp.object_near_target,
-        params={"target_pos": TARGET_POS, "threshold": 0.08, "object_cfg": SceneEntityCfg("object")},
+        func=mdp.object_placed_on_target,
+        params={
+            "target_pos": TARGET_POS,
+            "target_size": TARGET_SIZE,
+            "initial_height": CUBE_CENTER[2],
+            "height_tolerance": 0.04,
+            "max_speed": 0.25,
+            "object_cfg": SceneEntityCfg("object"),
+        },
     )
 
 
@@ -275,3 +336,37 @@ class WalkerS2PickPlaceEnvCfg(ManagerBasedRLEnvCfg):
 
         self.viewer.eye = (2.0, -1.25, 1.55)
         self.viewer.lookat = (0.75, 0.15, 1.0)
+
+
+@configclass
+class WalkerS2IKPickPlaceEnvCfg(WalkerS2PickPlaceEnvCfg):
+    """Walker S2 pick/place env with a compact palm-IK action interface."""
+
+    actions: IKActionsCfg = IKActionsCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.scene.robot = self.scene.robot.copy()
+        self.scene.robot.spawn.rigid_props.disable_gravity = True
+        self.scene.robot.spawn.articulation_props.solver_position_iteration_count = 8
+        self.scene.robot.spawn.articulation_props.solver_velocity_iteration_count = 4
+        self.scene.object.init_state.pos = (CUBE_CENTER[0] - 0.03, CUBE_CENTER[1], CUBE_CENTER[2])
+
+        for name, actuator_cfg in self.scene.robot.actuators.items():
+            if name == "hands":
+                actuator_cfg.effort_limit = 2000.0
+                actuator_cfg.effort_limit_sim = 2000.0
+                actuator_cfg.stiffness = 500.0
+                actuator_cfg.damping = 30.0
+            elif name == "head":
+                actuator_cfg.effort_limit = 100.0
+                actuator_cfg.effort_limit_sim = 100.0
+                actuator_cfg.stiffness = 80.0
+                actuator_cfg.damping = 8.0
+            else:
+                actuator_cfg.effort_limit = 5000.0
+                actuator_cfg.effort_limit_sim = 5000.0
+                if "shoulder" in name or "elbow" in name or "wrist" in name or name == "waist":
+                    actuator_cfg.stiffness = 3000.0
+                    actuator_cfg.damping = 180.0
