@@ -127,3 +127,163 @@ ISAAC_SIM_PYTHON=/path/to/isaacsim/python.sh \
 WALKER_S2_URDF=/path/to/walker_s2.urdf \
 ./teleop_walker_grasp.sh
 ```
+
+### Walker S2 IsaacLab Pick/Place RL
+
+This repository also contains a local IsaacLab task for fixed-base Walker S2
+pick/place:
+
+```text
+Isaac-WalkerS2-PickPlace-IK-v0
+```
+
+The task uses a compact 11D palm-IK action:
+
+```text
+[palm_xyz_delta, palm_rpy_delta, grip, shoulder_yaw_offset, elbow_yaw_offset, wrist_pitch_offset, wrist_roll_offset]
+```
+
+The current RL workflow uses a behavior-cloning checkpoint as a frozen teacher.
+PPO receives the real task reward and an additional decaying BC-prior penalty:
+
+```text
+rl_reward = task_reward - bc_coef * ||rl_action - bc_action||^2
+```
+
+This lets RL start near the demonstrated arm trajectory while still learning
+better contact, grasp timing, and release behavior.
+
+#### 1. Train or refresh the BC teacher checkpoint
+
+The behavior-cloning implementation is included in this repository:
+
+```text
+scripts/train_walker_s2_bc.py
+scripts/eval_walker_s2_bc.py
+```
+
+The repository includes a small fixed BC teacher checkpoint at:
+
+```text
+checkpoints/walker_s2_bc/single_demo_phase_processed/best.pt
+```
+
+To refresh it from the demo data, run this from the repository root. The
+training command writes to `logs/walker_s2_bc/single_demo_phase_processed/best.pt`;
+copy it back into `checkpoints/walker_s2_bc/single_demo_phase_processed/best.pt`
+if you want to update the packaged teacher.
+
+```bash
+cd /home/chris/Projects/internship/zollent_technology/GlobalHumanoidRobotChallenge_2026_Baseline
+
+TERM=xterm /home/chris/IsaacLab/isaaclab.sh -p scripts/train_walker_s2_bc.py \
+  --run_name single_demo_phase_processed \
+  --demo_roots demos/walker_s2_pick_place_success/walker_s2_pick_place_ep000_20260714_161434.npz \
+  --target_key processed_action \
+  --append_phase \
+  --epochs 800 \
+  --batch_size 128 \
+  --nonzero_action_weight 5 \
+  --grip_action_weight 8 \
+  --arm_offset_action_weight 5
+```
+
+If the checkpoint already exists, this step can be skipped.
+
+Optionally evaluate the BC teacher directly:
+
+```bash
+TERM=xterm /home/chris/IsaacLab/isaaclab.sh -p scripts/eval_walker_s2_bc.py \
+  --checkpoint checkpoints/walker_s2_bc/single_demo_phase_processed/best.pt \
+  --episodes 1 \
+  --settle_steps 180 \
+  --print_every 20
+```
+
+#### 2. Smoke-test the BC-prior PPO trainer
+
+This small run verifies checkpoint loading, IsaacLab environment creation, and
+one PPO update.
+
+```bash
+TERM=xterm /home/chris/IsaacLab/isaaclab.sh -p scripts/train_walker_s2_bc_prior_ppo.py \
+  --bc_checkpoint checkpoints/walker_s2_bc/single_demo_phase_processed/best.pt \
+  --run_name bc_prior_ppo_debug \
+  --num_envs 1 \
+  --iterations 1 \
+  --horizon 8 \
+  --epochs 1 \
+  --minibatches 1 \
+  --settle_steps 0 \
+  --rollout_progress_every 1 \
+  --headless
+```
+
+A successful smoke test reaches lines like:
+
+```text
+[BOOT] BC checkpoint loaded before env creation.
+[INFO] No settle steps requested. Starting PPO updates.
+[ROLLOUT iter=0001 step=0001/8] ...
+[ITER 0001] ...
+```
+
+#### 3. Run BC-prior PPO training
+
+Start with a moderate training run:
+
+```bash
+TERM=xterm /home/chris/IsaacLab/isaaclab.sh -p scripts/train_walker_s2_bc_prior_ppo.py \
+  --bc_checkpoint checkpoints/walker_s2_bc/single_demo_phase_processed/best.pt \
+  --run_name bc_prior_ppo_less_bc \
+  --num_envs 4 \
+  --iterations 500 \
+  --horizon 128 \
+  --epochs 2 \
+  --minibatches 2 \
+  --settle_steps 0 \
+  --bc_coef_start 0.05 \
+  --bc_coef_end 0.005 \
+  --bc_coef_decay_iters 200 \
+  --rollout_progress_every 0 \
+  --headless
+```
+
+The trainer writes checkpoints and config files to:
+
+```text
+logs/walker_s2_bc_prior_ppo/<run_name>/
+```
+
+The latest PPO checkpoint is:
+
+```text
+logs/walker_s2_bc_prior_ppo/<run_name>/latest.pt
+```
+
+#### Training log fields
+
+The PPO trainer prints:
+
+| Field | Meaning |
+| --- | --- |
+| `reward_mean` | Shaped rollout reward after subtracting the BC-prior penalty. It may be negative early. |
+| `recent_ep_return` | Recent raw task episode return. This is the main field to watch for task improvement. |
+| `bc_coef` | Current BC-prior penalty coefficient. It decays over training. |
+| `teacher_mse` | Mean squared difference between PPO action and BC teacher action. |
+| `entropy` | PPO policy exploration level. |
+
+If `teacher_mse` is high and learning stalls, reduce `bc_coef_start` and
+`bc_coef_end`. If the arm motion becomes unstable, increase them slightly.
+
+#### Troubleshooting
+
+- If the program appears frozen, use the smoke-test command with
+  `--rollout_progress_every 1`. The script prints `[BOOT]`, `[INFO]`,
+  `[SETTLE]`, and `[ROLLOUT]` markers around expensive sections.
+- The BC checkpoint must be loaded before IsaacLab environment creation. The
+  PPO script already does this.
+- The BC teacher checkpoint must match the env action dim. Current expected
+  dimensions are `obs_dim=46` for phase-conditioned BC and `action_dim=11`.
+- Run all IsaacLab commands from the repository root so relative checkpoint
+  paths resolve correctly.

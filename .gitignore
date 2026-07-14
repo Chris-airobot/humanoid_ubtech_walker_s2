@@ -89,6 +89,13 @@ wandb/
 outputs/
 logs/
 checkpoints/
+!checkpoints/
+checkpoints/*
+!checkpoints/walker_s2_bc/
+checkpoints/walker_s2_bc/*
+!checkpoints/walker_s2_bc/single_demo_phase_processed/
+!checkpoints/walker_s2_bc/single_demo_phase_processed/best.pt
+!checkpoints/walker_s2_bc/single_demo_phase_processed/metadata.json
 train_example/*
 !train_example/EXAMPLE/
 tests/outputs/
@@ -103,6 +110,7 @@ tests/outputs/
 .cache/
 docs/
 *.json
+!checkpoints/walker_s2_bc/single_demo_phase_processed/metadata.json
 .codex
 .github
 # 数据处理脚本

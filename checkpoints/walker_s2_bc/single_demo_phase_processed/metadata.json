@@ -1,0 +1,94 @@
+{
+  "demo_roots": [
+    "demos/walker_s2_pick_place_success/walker_s2_pick_place_ep000_20260714_161434.npz"
+  ],
+  "run_name": "single_demo_phase_processed",
+  "used_files": [
+    {
+      "path": "demos/walker_s2_pick_place_success/walker_s2_pick_place_ep000_20260714_161434.npz",
+      "used": true,
+      "reason": "unlabeled_included",
+      "frames": 587,
+      "obs_dim": 46,
+      "action_dim": 11
+    }
+  ],
+  "skipped_files": [],
+  "frames": 587,
+  "obs_dim": 46,
+  "action_dim": 11,
+  "hidden_dims": [
+    256,
+    256,
+    128
+  ],
+  "target_key": "processed_action",
+  "output_activation": "tanh",
+  "append_phase": true,
+  "phase_steps": 587,
+  "target_normalization": "demo_range",
+  "target_transform": {
+    "mode": "demo_range",
+    "center": [
+      -0.09000001102685928,
+      0.05499999225139618,
+      0.06999999284744263,
+      0.0,
+      -0.4800000786781311,
+      0.0,
+      0.5,
+      -0.009999999776482582,
+      -0.009999999776482582,
+      -0.009999999776482582,
+      0.0
+    ],
+    "half_range": [
+      0.18700002133846283,
+      0.06049999222159386,
+      0.07699999213218689,
+      0.019999999552965164,
+      0.5280001163482666,
+      0.019999999552965164,
+      0.550000011920929,
+      0.019999999552965164,
+      0.019999999552965164,
+      0.019999999552965164,
+      0.019999999552965164
+    ],
+    "target_min": [
+      -0.2600000202655792,
+      0.0,
+      0.0,
+      0.0,
+      -0.9600001573562622,
+      0.0,
+      0.0,
+      -0.019999999552965164,
+      -0.019999999552965164,
+      -0.019999999552965164,
+      0.0
+    ],
+    "target_max": [
+      0.07999999821186066,
+      0.10999998450279236,
+      0.13999998569488525,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "margin": 0.1,
+    "floor": 0.02
+  },
+  "epochs": 800,
+  "best_val_weighted_mse": 0.004339138045907021,
+  "action_nonzero_threshold": 0.05,
+  "nonzero_action_weight": 5.0,
+  "grip_action_weight": 8.0,
+  "arm_offset_action_weight": 5.0,
+  "elapsed_s": 10.743766069412231
+}
