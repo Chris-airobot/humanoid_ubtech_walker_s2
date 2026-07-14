@@ -60,6 +60,7 @@ assets/resources/*
 !assets/resources/walker_s2_description_hand3_v1_left_hand3_v1_right/
 !assets/resources/walker_s2_description_hand3_v1_left_hand3_v1_right/**
 assets/resources/walker_s2_description_hand3_v1_left_hand3_v1_right/*_isaac_simple_hand_collision.urdf
+!assets/resources/walker_s2_description_hand3_v1_left_hand3_v1_right/walker_s2_description_hand3_v1_left_hand3_v1_right_isaac_simple_hand_collision.urdf
 weight/*
 !weight/.gitkeep
 !weight/README.md

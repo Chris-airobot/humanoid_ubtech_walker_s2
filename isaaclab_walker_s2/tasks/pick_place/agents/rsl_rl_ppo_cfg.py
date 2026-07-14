@@ -7,7 +7,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 
 @configclass
 class WalkerS2IKPickPlacePPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    """Small PPO setup for the compact 4D palm-IK action space."""
+    """Small PPO setup for the compact 11D palm-IK action space."""
 
     seed = 42
     device = "cuda:0"

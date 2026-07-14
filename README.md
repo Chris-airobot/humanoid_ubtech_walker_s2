@@ -143,6 +143,9 @@ The task uses a compact 11D palm-IK action:
 [palm_xyz_delta, palm_rpy_delta, grip, shoulder_yaw_offset, elbow_yaw_offset, wrist_pitch_offset, wrist_roll_offset]
 ```
 
+This RL task uses proprioceptive/object/target observations only. It does not
+require camera sensors or contact sensor observations.
+
 The current RL workflow uses a behavior-cloning checkpoint as a frozen teacher.
 PPO receives the real task reward and an additional decaying BC-prior penalty:
 
@@ -283,6 +286,15 @@ If `teacher_mse` is high and learning stalls, reduce `bc_coef_start` and
   `[SETTLE]`, and `[ROLLOUT]` markers around expensive sections.
 - The BC checkpoint must be loaded before IsaacLab environment creation. The
   PPO script already does this.
+- If IsaacLab raises `No contact sensors added to the prim:
+  '/World/envs/env_0/Robot'`, make sure
+  `isaaclab_walker_s2/walker_s2_cfg.py` has
+  `activate_contact_sensors=False`. This PPO task does not use contact sensor
+  observations, and enabling them can fail on some IsaacLab/USD combinations.
+- Make sure the robot USD and IK URDF exist after cloning/pulling:
+  `assets/resources/walker_s2_description_hand3_v1_left_hand3_v1_right/walker_s2_with_hands_isaaclab.usd`
+  and
+  `assets/resources/walker_s2_description_hand3_v1_left_hand3_v1_right/walker_s2_description_hand3_v1_left_hand3_v1_right_isaac_simple_hand_collision.urdf`.
 - The BC teacher checkpoint must match the env action dim. Current expected
   dimensions are `obs_dim=46` for phase-conditioned BC and `action_dim=11`.
 - Run all IsaacLab commands from the repository root so relative checkpoint
