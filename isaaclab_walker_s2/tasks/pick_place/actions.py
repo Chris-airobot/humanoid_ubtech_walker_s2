@@ -49,6 +49,21 @@ class WalkerS2PalmIKAction(ActionTerm):
         self._object: RigidObject = env.scene[self.cfg.object_asset_name]
         self._dof_names = list(self._asset.joint_names)
         self._right_hand_ids = [self._dof_names.index(name) for name in self.cfg.right_hand_joint_names]
+        self._arm_offset_joint_names = list(self.cfg.arm_offset_joint_names)
+        self._arm_offset_ids = [self._dof_names.index(name) for name in self._arm_offset_joint_names]
+        self._arm_offset_dim = len(self._arm_offset_ids)
+        if self._arm_offset_dim > 0:
+            expected = self._arm_offset_dim
+            actual = (
+                len(self.cfg.arm_offset_min),
+                len(self.cfg.arm_offset_max),
+                len(self.cfg.arm_offset_delta_scale),
+            )
+            if actual != (expected, expected, expected):
+                raise ValueError(
+                    "arm_offset_min, arm_offset_max, and arm_offset_delta_scale must match "
+                    f"arm_offset_joint_names length {expected}; got {actual}."
+                )
 
         self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
         self._processed_actions = torch.zeros_like(self._raw_actions)
@@ -64,6 +79,12 @@ class WalkerS2PalmIKAction(ActionTerm):
         self._rpy_min = torch.tensor(self.cfg.rpy_min, device=self.device, dtype=torch.float32)
         self._rpy_max = torch.tensor(self.cfg.rpy_max, device=self.device, dtype=torch.float32)
         self._rpy_delta_scale = torch.tensor(self.cfg.rpy_delta_scale, device=self.device, dtype=torch.float32)
+        self._target_arm_offsets = torch.zeros(self.num_envs, self._arm_offset_dim, device=self.device)
+        self._arm_offset_min = torch.tensor(self.cfg.arm_offset_min, device=self.device, dtype=torch.float32)
+        self._arm_offset_max = torch.tensor(self.cfg.arm_offset_max, device=self.device, dtype=torch.float32)
+        self._arm_offset_delta_scale = torch.tensor(
+            self.cfg.arm_offset_delta_scale, device=self.device, dtype=torch.float32
+        )
         self._joint_target = self._asset.data.default_joint_pos.clone()
         self._reference_object_pos_w = torch.zeros(self.num_envs, 3, device=self.device, dtype=torch.float32)
 
@@ -88,7 +109,7 @@ class WalkerS2PalmIKAction(ActionTerm):
 
     @property
     def action_dim(self) -> int:
-        return 7
+        return 7 + len(self.cfg.arm_offset_joint_names)
 
     @property
     def raw_actions(self) -> torch.Tensor:
@@ -106,6 +127,10 @@ class WalkerS2PalmIKAction(ActionTerm):
     def right_hand_joint_ids(self) -> list[int]:
         return self._right_hand_ids
 
+    @property
+    def arm_offset_joint_names(self) -> list[str]:
+        return self._arm_offset_joint_names
+
     def process_actions(self, actions: torch.Tensor):
         self._raw_actions[:] = torch.clamp(actions, -1.0, 1.0)
         self._target_nudge[:] = torch.clamp(
@@ -119,9 +144,17 @@ class WalkerS2PalmIKAction(ActionTerm):
             max=self._rpy_max,
         )
         grip = torch.clamp(self._raw_actions[:, 6], 0.0, 1.0)
+        if self._arm_offset_dim > 0:
+            self._target_arm_offsets[:] = torch.clamp(
+                self._target_arm_offsets + self._raw_actions[:, 7:] * self._arm_offset_delta_scale,
+                min=self._arm_offset_min,
+                max=self._arm_offset_max,
+            )
         self._processed_actions[:, :3] = self._target_nudge
         self._processed_actions[:, 3:6] = self._target_rpy
         self._processed_actions[:, 6] = grip
+        if self._arm_offset_dim > 0:
+            self._processed_actions[:, 7:] = self._target_arm_offsets
 
         joint_pos = self._asset.data.joint_pos.detach().cpu().numpy()
         if self.cfg.track_current_object:
@@ -132,6 +165,7 @@ class WalkerS2PalmIKAction(ActionTerm):
         target_nudge = self._target_nudge.detach().cpu().numpy()
         target_rpy = self._target_rpy.detach().cpu().numpy()
         grip_np = grip.detach().cpu().numpy()
+        arm_offsets = self._target_arm_offsets.detach().cpu().numpy()
 
         joint_targets = []
         for env_id in range(self.num_envs):
@@ -143,6 +177,8 @@ class WalkerS2PalmIKAction(ActionTerm):
                 palm_world_nudge=target_nudge[env_id],
                 palm_rpy_nudge=target_rpy[env_id],
             )
+            if self._arm_offset_dim > 0:
+                q_target[self._arm_offset_ids] += arm_offsets[env_id]
             hand_target = self._hand_open + float(grip_np[env_id]) * (self._hand_close - self._hand_open)
             q_target[self._right_hand_ids] = hand_target
             joint_targets.append(q_target)
@@ -159,6 +195,8 @@ class WalkerS2PalmIKAction(ActionTerm):
         self._processed_actions[env_ids] = 0.0
         self._target_nudge[env_ids] = torch.tensor(self.cfg.default_nudge, device=self.device, dtype=torch.float32)
         self._target_rpy[env_ids] = torch.tensor(self.cfg.default_rpy, device=self.device, dtype=torch.float32)
+        if self._arm_offset_dim > 0:
+            self._target_arm_offsets[env_ids] = 0.0
         self._joint_target[env_ids] = self._asset.data.default_joint_pos[env_ids]
         self._reference_object_pos_w[env_ids] = self._object.data.root_pos_w[env_ids]
 
@@ -202,11 +240,12 @@ class WalkerS2PalmIKAction(ActionTerm):
 class WalkerS2PalmIKActionCfg(ActionTermCfg):
     """Palm delta + grip action that solves Walker S2 right-arm IK.
 
-    The action is seven dimensional:
+    The action is compact but includes an optional arm-posture residual:
 
     - ``a[0:3]``: incremental world-frame palm target nudge, scaled by ``delta_scale``.
     - ``a[3:6]``: incremental palm roll/pitch/yaw nudge, scaled by ``rpy_delta_scale``.
     - ``a[6]``: continuous grip command. Values <= 0 keep the hand open, values >= 1 close fully.
+    - ``a[7:]``: incremental offsets for ``arm_offset_joint_names``.
 
     The IK target is built from the current object center plus the persistent nudge.
     """
@@ -217,6 +256,7 @@ class WalkerS2PalmIKActionCfg(ActionTermCfg):
     urdf_path: str = str(DEFAULT_URDF_PATH)
     right_arm_joint_names: list[str] = MISSING
     right_hand_joint_names: list[str] = MISSING
+    arm_offset_joint_names: tuple[str, ...] = ()
     right_hand_open_command: dict[str, float] = MISSING
     right_hand_close_command: dict[str, float] = MISSING
     palm_tcp_offset: tuple[float, float, float] = (0.005, -0.018, 0.025)
@@ -228,6 +268,9 @@ class WalkerS2PalmIKActionCfg(ActionTermCfg):
     rpy_min: tuple[float, float, float] = (-0.6, -0.6, -0.6)
     rpy_max: tuple[float, float, float] = (0.6, 0.6, 0.6)
     rpy_delta_scale: tuple[float, float, float] = (0.03, 0.03, 0.03)
+    arm_offset_min: tuple[float, ...] = ()
+    arm_offset_max: tuple[float, ...] = ()
+    arm_offset_delta_scale: tuple[float, ...] = ()
     robot_yaw_deg: float = 90.0
     thumb_close_scale: float = 0.8
     finger_close_scale: float = 1.25

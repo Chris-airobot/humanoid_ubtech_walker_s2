@@ -51,7 +51,10 @@ def _print_debug(env: ManagerBasedRLEnv, obs: dict, rew: torch.Tensor, step: int
     hand_error = hand_actual - hand_target
     print(f"\n[STEP {step:04d}] reward={rew.detach().cpu().tolist()}")
     print(f"  action_raw={action_term.raw_actions.detach().cpu().tolist()}")
-    print(f"  action_processed=[target_nudge_xyz, target_rpy, grip]={action_term.processed_actions.detach().cpu().tolist()}")
+    print(
+        "  action_processed=[target_nudge_xyz, target_rpy, grip, arm_offsets]="
+        f"{action_term.processed_actions.detach().cpu().tolist()}"
+    )
     print(f"  right_hand_target={hand_target.tolist()}")
     print(f"  right_hand_actual={hand_actual.tolist()}")
     print(f"  right_hand_error={hand_error.tolist()}")
