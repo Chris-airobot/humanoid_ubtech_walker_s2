@@ -1,0 +1,447 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "URDF USD Converter v0.1.3"
+    }
+    defaultPrim = "walker_s2_official"
+    doc = """Generated from Composed Stage of root layer /tmp/tmptaznk_zb/walker_s2_official.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_walker_s2_isaac_simple_hand_collision_es7nyq2u/usdex_walker_s2_isaac_simple_hand_collision/walker_s2_official.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_walker_s2_isaac_simple_hand_collision_es7nyq2u/temp_walker_s2_isaac_simple_hand_collision/walker_s2_isaac_simple_hand_collision.usd
+
+
+Generated from Composed Stage of root layer /project/Zs-Meta/humanoid_ubtech_walker_s2/WalkerS2-Model/walker_s2_official/walker_s2_isaac_simple_hand_collision_isaacsim6_usd/walker_s2_isaac_simple_hand_collision.usd/walker_s2_isaac_simple_hand_collision_1/payloads/base.usd
+"""
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    subLayers = [
+        @./physics.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "walker_s2_official"
+{
+    over "Physics"
+    {
+        over "waist_yaw_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.05
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "waist_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.05
+            float physxJoint:maxJointVelocity = 120.00028
+        }
+
+        over "head_yaw_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.05
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "head_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.05
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "L_shoulder_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "L_shoulder_roll_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "L_shoulder_yaw_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "L_elbow_roll_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "L_elbow_yaw_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "L_wrist_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "L_wrist_roll_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "R_shoulder_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "R_shoulder_roll_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "R_shoulder_yaw_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "R_elbow_roll_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "R_elbow_yaw_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "R_wrist_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "R_wrist_roll_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "L_hip_roll_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "L_hip_yaw_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 300.0007
+        }
+
+        over "L_hip_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 499.99734
+        }
+
+        over "L_knee_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 549.9994
+        }
+
+        over "L_ankle_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 499.99734
+        }
+
+        over "L_ankle_roll_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 499.99734
+        }
+
+        over "R_hip_roll_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 180.00041
+        }
+
+        over "R_hip_yaw_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 300.0007
+        }
+
+        over "R_hip_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 499.99734
+        }
+
+        over "R_knee_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 549.9994
+        }
+
+        over "R_ankle_pitch_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 499.99734
+        }
+
+        over "R_ankle_roll_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 499.99734
+        }
+
+        over "L_thumb_cmp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "L_thumb_mpp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "L_thumb_ip_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "L_index_mpp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "L_index_ip_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "L_middle_mpp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "L_middle_ip_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "L_ring_mpp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "L_ring_ip_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "L_little_mpp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "L_little_ip_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_thumb_cmp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_thumb_mpp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_thumb_ip_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_index_mpp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_index_ip_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_middle_mpp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_middle_ip_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_ring_mpp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_ring_ip_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_little_mpp_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+
+        over "R_little_ip_joint" (
+            prepend apiSchemas = ["PhysxJointAPI"]
+        )
+        {
+            float physxJoint:jointFriction = 0.02
+            float physxJoint:maxJointVelocity = 119.74818
+        }
+    }
+}
+

@@ -1,0 +1,1851 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "URDF USD Converter v0.1.3"
+    }
+    defaultPrim = "walker_s2_official"
+    doc = """Generated from Composed Stage of root layer /tmp/tmptaznk_zb/walker_s2_official.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_walker_s2_isaac_simple_hand_collision_es7nyq2u/usdex_walker_s2_isaac_simple_hand_collision/walker_s2_official.usdc
+
+
+Generated from Composed Stage of root layer /tmp/urdf_import_walker_s2_isaac_simple_hand_collision_es7nyq2u/temp_walker_s2_isaac_simple_hand_collision/walker_s2_isaac_simple_hand_collision.usd
+
+
+Generated from Composed Stage of root layer /project/Zs-Meta/humanoid_ubtech_walker_s2/WalkerS2-Model/walker_s2_official/walker_s2_isaac_simple_hand_collision_isaacsim6_usd/walker_s2_isaac_simple_hand_collision.usd/walker_s2_isaac_simple_hand_collision_1/payloads/base.usd
+"""
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    subLayers = [
+        @./physics.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "walker_s2_official"
+{
+    over "Physics"
+    {
+        def MjcActuator "waist_yaw_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -5, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 85
+            uniform double mjc:forceRange:min = -85
+            uniform double[] mjc:gainPrm = [5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/waist_yaw_joint>
+        }
+
+        def MjcActuator "waist_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -5, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 265
+            uniform double mjc:forceRange:min = -265
+            uniform double[] mjc:gainPrm = [5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/waist_pitch_joint>
+        }
+
+        def MjcActuator "head_yaw_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -5, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 4.5
+            uniform double mjc:forceRange:min = -4.5
+            uniform double[] mjc:gainPrm = [5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/head_yaw_joint>
+        }
+
+        def MjcActuator "head_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -5, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 4.5
+            uniform double mjc:forceRange:min = -4.5
+            uniform double[] mjc:gainPrm = [5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/head_pitch_joint>
+        }
+
+        def MjcActuator "L_shoulder_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 80
+            uniform double mjc:forceRange:min = -80
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_shoulder_pitch_joint>
+        }
+
+        def MjcActuator "L_shoulder_roll_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 80
+            uniform double mjc:forceRange:min = -80
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_shoulder_roll_joint>
+        }
+
+        def MjcActuator "L_shoulder_yaw_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 45
+            uniform double mjc:forceRange:min = -45
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_shoulder_yaw_joint>
+        }
+
+        def MjcActuator "L_elbow_roll_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 45
+            uniform double mjc:forceRange:min = -45
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_elbow_roll_joint>
+        }
+
+        def MjcActuator "L_elbow_yaw_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 20
+            uniform double mjc:forceRange:min = -20
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_elbow_yaw_joint>
+        }
+
+        def MjcActuator "L_wrist_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 20
+            uniform double mjc:forceRange:min = -20
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_wrist_pitch_joint>
+        }
+
+        def MjcActuator "L_wrist_roll_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 20
+            uniform double mjc:forceRange:min = -20
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_wrist_roll_joint>
+        }
+
+        def MjcActuator "R_shoulder_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 80
+            uniform double mjc:forceRange:min = -80
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_shoulder_pitch_joint>
+        }
+
+        def MjcActuator "R_shoulder_roll_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 80
+            uniform double mjc:forceRange:min = -80
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_shoulder_roll_joint>
+        }
+
+        def MjcActuator "R_shoulder_yaw_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 45
+            uniform double mjc:forceRange:min = -45
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_shoulder_yaw_joint>
+        }
+
+        def MjcActuator "R_elbow_roll_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 45
+            uniform double mjc:forceRange:min = -45
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_elbow_roll_joint>
+        }
+
+        def MjcActuator "R_elbow_yaw_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 20
+            uniform double mjc:forceRange:min = -20
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_elbow_yaw_joint>
+        }
+
+        def MjcActuator "R_wrist_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 20
+            uniform double mjc:forceRange:min = -20
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_wrist_pitch_joint>
+        }
+
+        def MjcActuator "R_wrist_roll_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 20
+            uniform double mjc:forceRange:min = -20
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_wrist_roll_joint>
+        }
+
+        def MjcActuator "L_hip_roll_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 225
+            uniform double mjc:forceRange:min = -225
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_hip_roll_joint>
+        }
+
+        def MjcActuator "L_hip_yaw_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 65
+            uniform double mjc:forceRange:min = -65
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_hip_yaw_joint>
+        }
+
+        def MjcActuator "L_hip_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 225
+            uniform double mjc:forceRange:min = -225
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_hip_pitch_joint>
+        }
+
+        def MjcActuator "L_knee_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 225
+            uniform double mjc:forceRange:min = -225
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_knee_pitch_joint>
+        }
+
+        def MjcActuator "L_ankle_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 65
+            uniform double mjc:forceRange:min = -65
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_ankle_pitch_joint>
+        }
+
+        def MjcActuator "L_ankle_roll_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 65
+            uniform double mjc:forceRange:min = -65
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_ankle_roll_joint>
+        }
+
+        def MjcActuator "R_hip_roll_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 225
+            uniform double mjc:forceRange:min = -225
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_hip_roll_joint>
+        }
+
+        def MjcActuator "R_hip_yaw_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 65
+            uniform double mjc:forceRange:min = -65
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_hip_yaw_joint>
+        }
+
+        def MjcActuator "R_hip_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 225
+            uniform double mjc:forceRange:min = -225
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_hip_pitch_joint>
+        }
+
+        def MjcActuator "R_knee_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 225
+            uniform double mjc:forceRange:min = -225
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_knee_pitch_joint>
+        }
+
+        def MjcActuator "R_ankle_pitch_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 65
+            uniform double mjc:forceRange:min = -65
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_ankle_pitch_joint>
+        }
+
+        def MjcActuator "R_ankle_roll_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 65
+            uniform double mjc:forceRange:min = -65
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_ankle_roll_joint>
+        }
+
+        def MjcActuator "L_thumb_cmp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_thumb_cmp_joint>
+        }
+
+        def MjcActuator "L_thumb_mpp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_thumb_mpp_joint>
+        }
+
+        def MjcActuator "L_thumb_ip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_thumb_ip_joint>
+        }
+
+        def MjcActuator "L_index_mpp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_index_mpp_joint>
+        }
+
+        def MjcActuator "L_index_ip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_index_ip_joint>
+        }
+
+        def MjcActuator "L_middle_mpp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_middle_mpp_joint>
+        }
+
+        def MjcActuator "L_middle_ip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_middle_ip_joint>
+        }
+
+        def MjcActuator "L_ring_mpp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_ring_mpp_joint>
+        }
+
+        def MjcActuator "L_ring_ip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_ring_ip_joint>
+        }
+
+        def MjcActuator "L_little_mpp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_little_mpp_joint>
+        }
+
+        def MjcActuator "L_little_ip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/L_little_ip_joint>
+        }
+
+        def MjcActuator "R_thumb_cmp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_thumb_cmp_joint>
+        }
+
+        def MjcActuator "R_thumb_mpp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_thumb_mpp_joint>
+        }
+
+        def MjcActuator "R_thumb_ip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_thumb_ip_joint>
+        }
+
+        def MjcActuator "R_index_mpp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_index_mpp_joint>
+        }
+
+        def MjcActuator "R_index_ip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_index_ip_joint>
+        }
+
+        def MjcActuator "R_middle_mpp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_middle_mpp_joint>
+        }
+
+        def MjcActuator "R_middle_ip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_middle_ip_joint>
+        }
+
+        def MjcActuator "R_ring_mpp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_ring_mpp_joint>
+        }
+
+        def MjcActuator "R_ring_ip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_ring_ip_joint>
+        }
+
+        def MjcActuator "R_little_mpp_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_little_mpp_joint>
+        }
+
+        def MjcActuator "R_little_ip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -2, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 1.350000023841858
+            uniform double mjc:forceRange:min = -1.350000023841858
+            uniform double[] mjc:gainPrm = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </walker_s2_official/Physics/R_little_ip_joint>
+        }
+
+        over "waist_yaw_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.05
+        }
+
+        over "waist_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.05
+        }
+
+        over "head_yaw_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.05
+        }
+
+        over "head_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.05
+        }
+
+        over "L_shoulder_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_shoulder_roll_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_shoulder_yaw_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_elbow_roll_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_elbow_yaw_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_wrist_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_wrist_roll_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_shoulder_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_shoulder_roll_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_shoulder_yaw_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_elbow_roll_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_elbow_yaw_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_wrist_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_wrist_roll_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_hip_roll_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_hip_yaw_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_hip_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_knee_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_ankle_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_ankle_roll_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_hip_roll_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_hip_yaw_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_hip_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_knee_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_ankle_pitch_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_ankle_roll_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_thumb_cmp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_thumb_mpp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_thumb_ip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_index_mpp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_index_ip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_middle_mpp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_middle_ip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_ring_mpp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_ring_ip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_little_mpp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "L_little_ip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_thumb_cmp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_thumb_mpp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_thumb_ip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_index_mpp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_index_ip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_middle_mpp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_middle_ip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_ring_mpp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_ring_ip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_little_mpp_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "R_little_ip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.02
+        }
+
+        over "root_joint"
+        {
+        }
+
+        over "L_sixforce_joint"
+        {
+        }
+
+        over "R_sixforce_joint"
+        {
+        }
+
+        over "L_wrist_to_hand_base_joint"
+        {
+        }
+
+        over "R_wrist_to_hand_base_joint"
+        {
+        }
+
+        over "L_palm_joint"
+        {
+        }
+
+        over "R_palm_joint"
+        {
+        }
+    }
+
+    over "Geometry"
+    {
+        over "base_link"
+        {
+            over "waist_yaw_link"
+            {
+                over "waist_pitch_link"
+                {
+                    over "head_yaw_link"
+                    {
+                        over "head_pitch_link"
+                        {
+                            over "head_pitch_link"
+                            {
+                            }
+
+                            over "head_pitch_link_1"
+                            {
+                            }
+                        }
+
+                        over "head_yaw_link"
+                        {
+                        }
+
+                        over "head_yaw_link_1"
+                        {
+                        }
+                    }
+
+                    over "L_shoulder_pitch_link"
+                    {
+                        over "L_shoulder_roll_link"
+                        {
+                            over "L_shoulder_yaw_link"
+                            {
+                                over "L_elbow_roll_link"
+                                {
+                                    over "L_elbow_yaw_link"
+                                    {
+                                        over "L_wrist_pitch_link"
+                                        {
+                                            over "L_wrist_roll_link"
+                                            {
+                                                over "L_sixforce_link"
+                                                {
+                                                    over "L_hand_base_link"
+                                                    {
+                                                        over "L_palm_link"
+                                                        {
+                                                            over "L_thumb_cmp_link"
+                                                            {
+                                                                over "L_thumb_mpp_link"
+                                                                {
+                                                                    over "L_thumb_ip_link"
+                                                                    {
+                                                                        over "L_thumb_ip_link"
+                                                                        {
+                                                                        }
+
+                                                                        over "simplified_capsule_body"
+                                                                        {
+                                                                        }
+
+                                                                        over "simplified_capsule_a"
+                                                                        {
+                                                                        }
+
+                                                                        over "simplified_capsule_b"
+                                                                        {
+                                                                        }
+                                                                    }
+
+                                                                    over "L_thumb_mpp_link"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_body"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_a"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_b"
+                                                                    {
+                                                                    }
+                                                                }
+
+                                                                over "L_thumb_cmp_link"
+                                                                {
+                                                                }
+
+                                                                over "simplified_box"
+                                                                {
+                                                                }
+                                                            }
+
+                                                            over "L_index_mpp_link"
+                                                            {
+                                                                over "L_index_ip_link"
+                                                                {
+                                                                    over "L_index_ip_link"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_body"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_a"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_b"
+                                                                    {
+                                                                    }
+                                                                }
+
+                                                                over "L_index_mpp_link"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_body"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_a"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_b"
+                                                                {
+                                                                }
+                                                            }
+
+                                                            over "L_middle_mpp_link"
+                                                            {
+                                                                over "L_middle_ip_link"
+                                                                {
+                                                                    over "L_middle_ip_link"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_body"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_a"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_b"
+                                                                    {
+                                                                    }
+                                                                }
+
+                                                                over "L_middle_mpp_link"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_body"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_a"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_b"
+                                                                {
+                                                                }
+                                                            }
+
+                                                            over "L_ring_mpp_link"
+                                                            {
+                                                                over "L_ring_ip_link"
+                                                                {
+                                                                    over "L_ring_ip_link"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_body"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_a"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_b"
+                                                                    {
+                                                                    }
+                                                                }
+
+                                                                over "L_ring_mpp_link"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_body"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_a"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_b"
+                                                                {
+                                                                }
+                                                            }
+
+                                                            over "L_little_mpp_link"
+                                                            {
+                                                                over "L_little_ip_link"
+                                                                {
+                                                                    over "L_little_ip_link"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_body"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_a"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_b"
+                                                                    {
+                                                                    }
+                                                                }
+
+                                                                over "L_little_mpp_link"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_body"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_a"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_b"
+                                                                {
+                                                                }
+                                                            }
+
+                                                            over "L_palm_link"
+                                                            {
+                                                            }
+                                                        }
+
+                                                        over "L_hand_base_link"
+                                                        {
+                                                        }
+                                                    }
+
+                                                    over "L_sixforce_link"
+                                                    {
+                                                    }
+
+                                                    over "L_sixforce_link_1"
+                                                    {
+                                                    }
+                                                }
+
+                                                over "L_wrist_roll_link"
+                                                {
+                                                }
+
+                                                over "L_wrist_roll_link_1"
+                                                {
+                                                }
+                                            }
+
+                                            over "L_wrist_pitch_link"
+                                            {
+                                            }
+
+                                            over "L_wrist_pitch_link_1"
+                                            {
+                                            }
+                                        }
+
+                                        over "L_elbow_yaw_link"
+                                        {
+                                        }
+
+                                        over "L_elbow_yaw_link_1"
+                                        {
+                                        }
+                                    }
+
+                                    over "L_elbow_roll_link"
+                                    {
+                                    }
+
+                                    over "L_elbow_roll_link_1"
+                                    {
+                                    }
+                                }
+
+                                over "L_shoulder_yaw_link"
+                                {
+                                }
+
+                                over "L_shoulder_yaw_link_1"
+                                {
+                                }
+                            }
+
+                            over "L_shoulder_roll_link"
+                            {
+                            }
+
+                            over "L_shoulder_roll_link_1"
+                            {
+                            }
+                        }
+
+                        over "L_shoulder_pitch_link"
+                        {
+                        }
+
+                        over "L_shoulder_pitch_link_1"
+                        {
+                        }
+                    }
+
+                    over "R_shoulder_pitch_link"
+                    {
+                        over "R_shoulder_roll_link"
+                        {
+                            over "R_shoulder_yaw_link"
+                            {
+                                over "R_elbow_roll_link"
+                                {
+                                    over "R_elbow_yaw_link"
+                                    {
+                                        over "R_wrist_pitch_link"
+                                        {
+                                            over "R_wrist_roll_link"
+                                            {
+                                                over "R_sixforce_link"
+                                                {
+                                                    over "R_hand_base_link"
+                                                    {
+                                                        over "R_palm_link"
+                                                        {
+                                                            over "R_thumb_cmp_link"
+                                                            {
+                                                                over "R_thumb_mpp_link"
+                                                                {
+                                                                    over "R_thumb_ip_link"
+                                                                    {
+                                                                        over "R_thumb_ip_link"
+                                                                        {
+                                                                        }
+
+                                                                        over "simplified_capsule_body"
+                                                                        {
+                                                                        }
+
+                                                                        over "simplified_capsule_a"
+                                                                        {
+                                                                        }
+
+                                                                        over "simplified_capsule_b"
+                                                                        {
+                                                                        }
+                                                                    }
+
+                                                                    over "R_thumb_mpp_link"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_body"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_a"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_b"
+                                                                    {
+                                                                    }
+                                                                }
+
+                                                                over "R_thumb_cmp_link"
+                                                                {
+                                                                }
+
+                                                                over "simplified_box"
+                                                                {
+                                                                }
+                                                            }
+
+                                                            over "R_index_mpp_link"
+                                                            {
+                                                                over "R_index_ip_link"
+                                                                {
+                                                                    over "R_index_ip_link"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_body"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_a"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_b"
+                                                                    {
+                                                                    }
+                                                                }
+
+                                                                over "R_index_mpp_link"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_body"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_a"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_b"
+                                                                {
+                                                                }
+                                                            }
+
+                                                            over "R_middle_mpp_link"
+                                                            {
+                                                                over "R_middle_ip_link"
+                                                                {
+                                                                    over "R_middle_ip_link"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_body"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_a"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_b"
+                                                                    {
+                                                                    }
+                                                                }
+
+                                                                over "R_middle_mpp_link"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_body"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_a"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_b"
+                                                                {
+                                                                }
+                                                            }
+
+                                                            over "R_ring_mpp_link"
+                                                            {
+                                                                over "R_ring_ip_link"
+                                                                {
+                                                                    over "R_ring_ip_link"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_body"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_a"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_b"
+                                                                    {
+                                                                    }
+                                                                }
+
+                                                                over "R_ring_mpp_link"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_body"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_a"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_b"
+                                                                {
+                                                                }
+                                                            }
+
+                                                            over "R_little_mpp_link"
+                                                            {
+                                                                over "R_little_ip_link"
+                                                                {
+                                                                    over "R_little_ip_link"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_body"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_a"
+                                                                    {
+                                                                    }
+
+                                                                    over "simplified_capsule_b"
+                                                                    {
+                                                                    }
+                                                                }
+
+                                                                over "R_little_mpp_link"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_body"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_a"
+                                                                {
+                                                                }
+
+                                                                over "simplified_capsule_b"
+                                                                {
+                                                                }
+                                                            }
+
+                                                            over "R_palm_link"
+                                                            {
+                                                            }
+                                                        }
+
+                                                        over "R_hand_base_link"
+                                                        {
+                                                        }
+                                                    }
+
+                                                    over "R_sixforce_link"
+                                                    {
+                                                    }
+
+                                                    over "R_sixforce_link_1"
+                                                    {
+                                                    }
+                                                }
+
+                                                over "R_wrist_roll_link"
+                                                {
+                                                }
+
+                                                over "R_wrist_roll_link_1"
+                                                {
+                                                }
+                                            }
+
+                                            over "R_wrist_pitch_link"
+                                            {
+                                            }
+
+                                            over "R_wrist_pitch_link_1"
+                                            {
+                                            }
+                                        }
+
+                                        over "R_elbow_yaw_link"
+                                        {
+                                        }
+
+                                        over "R_elbow_yaw_link_1"
+                                        {
+                                        }
+                                    }
+
+                                    over "R_elbow_roll_link"
+                                    {
+                                    }
+
+                                    over "R_elbow_roll_link_1"
+                                    {
+                                    }
+                                }
+
+                                over "R_shoulder_yaw_link"
+                                {
+                                }
+
+                                over "R_shoulder_yaw_link_1"
+                                {
+                                }
+                            }
+
+                            over "R_shoulder_roll_link"
+                            {
+                            }
+
+                            over "R_shoulder_roll_link_1"
+                            {
+                            }
+                        }
+
+                        over "R_shoulder_pitch_link"
+                        {
+                        }
+
+                        over "R_shoulder_pitch_link_1"
+                        {
+                        }
+                    }
+
+                    over "waist_pitch_link"
+                    {
+                    }
+
+                    over "waist_pitch_link_1"
+                    {
+                    }
+                }
+
+                over "waist_yaw_link"
+                {
+                }
+
+                over "waist_yaw_link_1"
+                {
+                }
+            }
+
+            over "L_hip_roll_link"
+            {
+                over "L_hip_yaw_link"
+                {
+                    over "L_hip_pitch_link"
+                    {
+                        over "L_knee_pitch_link"
+                        {
+                            over "L_ankle_pitch_link"
+                            {
+                                over "L_ankle_roll_link"
+                                {
+                                    over "L_ankle_roll_link"
+                                    {
+                                    }
+
+                                    over "L_ankle_roll_link_1"
+                                    {
+                                    }
+                                }
+
+                                over "L_ankle_pitch_link"
+                                {
+                                }
+
+                                over "L_ankle_pitch_link_1"
+                                {
+                                }
+                            }
+
+                            over "L_knee_pitch_link"
+                            {
+                            }
+
+                            over "L_knee_pitch_link_1"
+                            {
+                            }
+                        }
+
+                        over "L_hip_pitch_link"
+                        {
+                        }
+
+                        over "L_hip_pitch_link_1"
+                        {
+                        }
+                    }
+
+                    over "L_hip_yaw_link"
+                    {
+                    }
+
+                    over "L_hip_yaw_link_1"
+                    {
+                    }
+                }
+
+                over "L_hip_roll_link"
+                {
+                }
+
+                over "L_hip_roll_link_1"
+                {
+                }
+            }
+
+            over "R_hip_roll_link"
+            {
+                over "R_hip_yaw_link"
+                {
+                    over "R_hip_pitch_link"
+                    {
+                        over "R_knee_pitch_link"
+                        {
+                            over "R_ankle_pitch_link"
+                            {
+                                over "R_ankle_roll_link"
+                                {
+                                    over "R_ankle_roll_link"
+                                    {
+                                    }
+
+                                    over "R_ankle_roll_link_1"
+                                    {
+                                    }
+                                }
+
+                                over "R_ankle_pitch_link"
+                                {
+                                }
+
+                                over "R_ankle_pitch_link_1"
+                                {
+                                }
+                            }
+
+                            over "R_knee_pitch_link"
+                            {
+                            }
+
+                            over "R_knee_pitch_link_1"
+                            {
+                            }
+                        }
+
+                        over "R_hip_pitch_link"
+                        {
+                        }
+
+                        over "R_hip_pitch_link_1"
+                        {
+                        }
+                    }
+
+                    over "R_hip_yaw_link"
+                    {
+                    }
+
+                    over "R_hip_yaw_link_1"
+                    {
+                    }
+                }
+
+                over "R_hip_roll_link"
+                {
+                }
+
+                over "R_hip_roll_link_1"
+                {
+                }
+            }
+
+            over "base_link"
+            {
+            }
+
+            over "base_link_1"
+            {
+            }
+        }
+    }
+
+    over "Materials"
+    {
+    }
+
+    over "VisualMaterials"
+    {
+    }
+}
+

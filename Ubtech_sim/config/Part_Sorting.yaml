@@ -1,8 +1,6 @@
 root_path: "../../assets/resources/"
 
-# Minimal calibration stage. The table, part, and robot are added below by
-# SceneBuilder, so the textured warehouse is unnecessary for grasp testing.
-scene_usd: '../minimal_grasp_scene.usda'
+scene_usd: 'Collected_Task4/SubUSDs/2_small_warehouse2.usd'
 
 timelimit: 100
 
@@ -18,37 +16,12 @@ part:
     - "Collected_Part_B_blue/Part_B.usd"
     - "Collected_Part_B_ori_color/Part_B.usd"
   num_parts: 2  # fallback, used when num_parts_a / num_parts_b not set
-  # Calibration mode: use fewer, larger objects so grasp-frame errors are visible
-  # without making every attempt fail on tiny contact margins.
-  num_parts_a: 1  # Part A quantity (overrides num_parts)
-  num_parts_b: 0  # Part B quantity (overrides num_parts)
-  use_simple_block: true
-  simple_block_size: [0.056, 0.040, 0.088]
-  scale: [1.0, 1.0, 1.0]
-  rotation_mode: upright
-  upright_rotation_deg: [0, 0]
-  yaw_range_deg: [-180, 180]
-  mass: 0.45
-  contact:
-    static_friction: 2.0
-    dynamic_friction: 1.6
-    restitution: 0.0
-    contact_offset: 0.002
-    rest_offset: 0.0
-    max_linear_velocity: 1.0
-    max_angular_velocity: 4.0
-    damping:
-      linear: 0.25
-      angular: 0.50
-  auto_reset_outside_table: true
-  table_edge_tolerance: 0.02
-  table_fall_distance: 0.08
-  scatter_center_xy: [0.75, 0.20]
-  scatter_half_size_xy: [0.035, 0.025]
-  scatter_min_distance: 0.18
-  scatter_edge_margin_x: 0.045
-  scatter_edge_margin_y: 0.045
-  spawn_z_offset: 0.055
+  num_parts_a: 2  # Part A quantity (overrides num_parts)
+  num_parts_b: 2  # Part B quantity (overrides num_parts)
+  scatter_min_distance: 0.11  
+  scatter_edge_margin_x: 0.025
+  scatter_edge_margin_y: 0.025
+  spawn_z_offset: 0.0
 
 plane:
   plane_position: 
@@ -62,81 +35,30 @@ table:
   - [0.75, 0.3, 0.5]
   table_scale: 
   - [1.9927, 1.8738, 1.1109]
-  contact:
-    static_friction: 1.8
-    dynamic_friction: 1.4
-    restitution: 0.0
+
+box:
+  box_usd: 'Box_blank/box_60_40_23_cut_0.usd'
+  box_position: 
+  - [1.2, 0.3, 1.05]
+  box_scale: 
+  - [0.38, 0.75, 0.36]
+  lock_boxes: true   # 禁止物理引擎移动箱子，保持固定位置
 
 robot:
-  # Official merged body + UBT hand v3 (relative to repo root zollent_technology/)
-  robot_urdf: WalkerS2-Model/walker_s2_description_hand3_v1_left_hand3_v1_right/walker_s2_description_hand3_v1_left_hand3_v1_right.urdf
-  # Fallback USD spawn (used only when robot_urdf is absent):
-  robot_usd: 'Collected_WalkerS2_hand3/SubUSDs/s2_hand4_v1.usd'
+  robot_usd: 'Collected_s2_v1_ecbg/s2_v1.usd' 
   robot_position: [0.7, -0.2, 0.9] 
   robot_rotation: [0, 0, 90]
-  arm_control:
-    mode: kinematic
-    stiffness: 180.0
-    damping: 25.0
-    shoulder_effort_limit: 80.0
-    elbow_effort_limit: 65.0
-    wrist_effort_limit: 25.0
-    velocity_limit: 1.2
-    acceleration_limit: 3.0
 
 grasp:
   target_index: 0
-  hand_pose: power
-  # Each grasp type has its own pre-shape and contact center. These are initial
-  # geometry-based values and can be calibrated independently from test images.
-  profiles:
-    pinch:
-      preshape_pose: pinch_pre
-      palm_tcp_offset: [0.055, 0.0, 0.04]
-      palm_tcp_lateral_offset: 0.028
-    tripod:
-      preshape_pose: tripod_pre
-      palm_tcp_offset: [0.060, 0.0, 0.040]
-      palm_tcp_lateral_offset: 0.020
-    power:
-      preshape_pose: power_pre
-      palm_tcp_offset: [0.065, 0.0, 0.035]
-      palm_tcp_lateral_offset: 0.0
-  pregrasp_distance: 0.08
-  grasp_orientation: side
-  side_approach_mode: arm_lateral
-  side_forward_bias: 0.0
-  side_finger_direction: forward
-  approach_direction: palm_normal
-  grasp_frame: palm
-  # Thumb-index pinch center in palm_link coordinates: forward, lateral,
-  # palm-normal (m). The lateral offset is mirrored for left/right hands.
-  # For a side grasp, palm +X points forward along the tabletop and palm +Z
-  # points horizontally inward from the active arm side, like the Tienkung apple grasp.
-  palm_tcp_offset: [0.055, 0.0, 0.04]
-  palm_tcp_lateral_offset: 0.028
-  mirror_palm_tcp_lateral: true
-  grasp_height_offset: 0.005
-  max_grasp_distance: 0.85
-  workspace_x: [0.15, 0.85]
-  workspace_y: [-0.65, 0.65]
-  workspace_z: [-0.05, 0.55]
   lift_height: 0.17
+  settle_time: 2.0
   approach_time: 3.0
-  preshape_time: 0.8
-  reach_time: 3.0
-  close_time: 1.0
-  settle_time: 1.0
+  reach_time: 2.0
+  hold_time: 1.0
   lift_time: 2.0
-  ik_rot_weight: 0.18
-  ik_pos_tol: 0.012
-  ik_rot_tol: 0.12
-  ik_null_weight: 0.0
-  ik_max_iter: 600
-  ik_damping: 0.0001
-  ik_dq_max: 0.35
-  waypoint_tolerance: 0.04
-  waypoint_timeout: 2.5
+  tcp_offset: [0.0, 0.0, 0.0]   # sixforce_link 局部坐标系下 TCP 的偏移 (m)
+  ik_rot_weight: 1.0
   scatter_area:
     center: [0.75, 0.28, 1.04]   # 散布中心 [x, y, z]
-    size:   [0.36, 0.26]         # 散布半宽 x方向, y方向 (m)  →  x:[0.57,0.93] y:[0.15,0.41]
+    size:   [0.30, 0.23]         # 散布半宽 x方向, y方向 (m)  →  x:[0.50,0.80] y:[0.10,0.30]
