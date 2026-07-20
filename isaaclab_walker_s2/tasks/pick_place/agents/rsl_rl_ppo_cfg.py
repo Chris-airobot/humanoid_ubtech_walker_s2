@@ -42,3 +42,48 @@ class WalkerS2IKPickPlacePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
+
+
+@configclass
+class WalkerS2StagedPickPlacePPORunnerCfg(WalkerS2IKPickPlacePPORunnerCfg):
+    """PPO setup for the staged primitive action space."""
+
+    experiment_name = "walker_s2_pick_place_staged"
+    policy = RslRlPpoActorCriticCfg(
+        init_noise_std=0.05,
+        actor_obs_normalization=False,
+        critic_obs_normalization=False,
+        actor_hidden_dims=[256, 128, 64],
+        critic_hidden_dims=[256, 128, 64],
+        activation="elu",
+    )
+
+
+@configclass
+class WalkerS2DirectArmPickPlacePPORunnerCfg(WalkerS2IKPickPlacePPORunnerCfg):
+    """PPO setup for the direct right-arm + grip student action space."""
+
+    experiment_name = "walker_s2_pick_place_direct_arm"
+    policy = RslRlPpoActorCriticCfg(
+        init_noise_std=0.35,
+        actor_obs_normalization=False,
+        critic_obs_normalization=False,
+        actor_hidden_dims=[256, 128, 64],
+        critic_hidden_dims=[256, 128, 64],
+        activation="elu",
+    )
+
+
+@configclass
+class WalkerS2CartesianPickPlacePPORunnerCfg(WalkerS2IKPickPlacePPORunnerCfg):
+    """PPO setup for the object-agnostic Cartesian palm action space."""
+
+    experiment_name = "walker_s2_pick_place_cartesian"
+    policy = RslRlPpoActorCriticCfg(
+        init_noise_std=0.15,
+        actor_obs_normalization=True,
+        critic_obs_normalization=True,
+        actor_hidden_dims=[256, 256, 128],
+        critic_hidden_dims=[256, 256, 128],
+        activation="elu",
+    )

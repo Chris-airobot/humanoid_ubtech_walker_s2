@@ -9,6 +9,7 @@ from __future__ import annotations
 import isaaclab.envs.mdp as base_mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
+from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -22,7 +23,14 @@ from isaaclab.utils import configclass
 from isaaclab_walker_s2 import WALKER_S2_CFG
 
 from . import mdp
-from .actions import WalkerS2PalmIKActionCfg
+from .actions import (
+    WalkerS2AbsoluteCartesianActionCfg,
+    WalkerS2DirectArmGripActionCfg,
+    WalkerS2HandGripActionCfg,
+    WalkerS2ObjectRelativeCartesianActionCfg,
+    WalkerS2PalmIKActionCfg,
+    WalkerS2StagedPickPlaceActionCfg,
+)
 
 
 TABLE_CENTER = (0.75, 0.30, 1.02)
@@ -176,6 +184,121 @@ class IKActionsCfg:
 
 
 @configclass
+class DirectArmActionsCfg:
+    """Direct right-arm + grip action specifications for student RL."""
+
+    # Keep the term name as "palm_ik" so the shared reward helpers can read the grip command.
+    palm_ik = WalkerS2DirectArmGripActionCfg(
+        asset_name="robot",
+        right_arm_joint_names=RIGHT_ARM_JOINTS,
+        right_hand_joint_names=RIGHT_HAND_JOINTS,
+        right_hand_open_command=RIGHT_HAND_OPEN_COMMAND,
+        right_hand_close_command=RIGHT_HAND_CLOSE_COMMAND,
+        arm_joint_scale=(1.2, 1.2, 1.5, 1.5, 1.5, 1.2, 1.2),
+        thumb_close_scale=0.95,
+        finger_close_scale=2.1,
+    )
+
+
+@configclass
+class CartesianActionsCfg:
+    """Object-agnostic absolute Cartesian palm goal and grip specifications."""
+
+    arm_ik = WalkerS2AbsoluteCartesianActionCfg(
+        asset_name="robot",
+        joint_names=RIGHT_ARM_JOINTS,
+        body_name="hand3_v1_right_R_palm_link",
+        controller=DifferentialIKControllerCfg(
+            command_type="pose",
+            use_relative_mode=False,
+            ik_method="dls",
+            ik_params={"lambda_val": 0.05},
+        ),
+        scale=1.0,
+        workspace_min=(0.54, 0.04, 1.06),
+        workspace_max=(1.10, 0.40, 1.36),
+        nominal_quat_w=(0.5, -0.5, -0.5, 0.5),
+        orientation_range=(0.4, 0.4, 0.4),
+    )
+
+    # Keep this term name so shared reward and termination helpers read grip.
+    palm_ik = WalkerS2HandGripActionCfg(
+        asset_name="robot",
+        right_hand_joint_names=RIGHT_HAND_JOINTS,
+        right_hand_open_command=RIGHT_HAND_OPEN_COMMAND,
+        right_hand_close_command=RIGHT_HAND_CLOSE_COMMAND,
+        thumb_close_scale=0.95,
+        finger_close_scale=2.1,
+    )
+
+
+@configclass
+class ObjectRelativeCartesianActionsCfg:
+    """Object-relative absolute Cartesian palm goal and grip specifications."""
+
+    arm_ik = WalkerS2ObjectRelativeCartesianActionCfg(
+        asset_name="robot",
+        object_asset_name="object",
+        joint_names=RIGHT_ARM_JOINTS,
+        body_name="hand3_v1_right_R_palm_link",
+        controller=DifferentialIKControllerCfg(
+            command_type="pose",
+            use_relative_mode=False,
+            ik_method="dls",
+            ik_params={"lambda_val": 0.05},
+        ),
+        scale=1.0,
+        workspace_min=(0.54, 0.04, 1.06),
+        workspace_max=(1.10, 0.40, 1.36),
+        offset_min=(-0.35, -0.25, -0.10),
+        offset_max=(0.25, 0.25, 0.35),
+        nominal_quat_w=(0.5, -0.5, -0.5, 0.5),
+        orientation_range=(0.4, 0.4, 0.4),
+    )
+
+    palm_ik = WalkerS2HandGripActionCfg(
+        asset_name="robot",
+        right_hand_joint_names=RIGHT_HAND_JOINTS,
+        right_hand_open_command=RIGHT_HAND_OPEN_COMMAND,
+        right_hand_close_command=RIGHT_HAND_CLOSE_COMMAND,
+        thumb_close_scale=0.95,
+        finger_close_scale=2.1,
+    )
+
+
+@configclass
+class StagedActionsCfg:
+    """Stage-based pick/place primitive action specifications for RL."""
+
+    palm_ik = WalkerS2StagedPickPlaceActionCfg(
+        asset_name="robot",
+        object_asset_name="object",
+        right_arm_joint_names=RIGHT_ARM_JOINTS,
+        right_hand_joint_names=RIGHT_HAND_JOINTS,
+        arm_offset_joint_names=(
+            "R_shoulder_yaw_joint",
+            "R_elbow_yaw_joint",
+            "R_wrist_pitch_joint",
+            "R_wrist_roll_joint",
+        ),
+        right_hand_open_command=RIGHT_HAND_OPEN_COMMAND,
+        right_hand_close_command=RIGHT_HAND_CLOSE_COMMAND,
+        default_nudge=(0.08, 0.0, 0.0),
+        nudge_min=(-0.36, -0.18, -0.06),
+        nudge_max=(0.14, 0.18, 0.24),
+        rpy_min=(-1.2, -1.2, -1.2),
+        rpy_max=(1.2, 1.2, 1.2),
+        arm_offset_min=(-0.6, -0.6, -0.6, -0.6),
+        arm_offset_max=(0.6, 0.6, 0.6, 0.6),
+        arm_offset_delta_scale=(0.05, 0.05, 0.05, 0.05),
+        target_pos=TARGET_POS,
+        thumb_close_scale=0.95,
+        finger_close_scale=2.1,
+        quiet_ik=True,
+    )
+
+
+@configclass
 class ObservationsCfg:
     """Observation specifications for the MDP."""
 
@@ -201,6 +324,74 @@ class ObservationsCfg:
         )
         object_pos = ObsTerm(func=mdp.object_position, params={"asset_cfg": SceneEntityCfg("object")})
         target_pos = ObsTerm(func=mdp.target_position, params={"target_pos": TARGET_POS})
+        actions = ObsTerm(func=base_mdp.last_action)
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+@configclass
+class CartesianObservationsCfg:
+    """Markov-oriented state observations for Cartesian pick/place policies."""
+
+    @configclass
+    class PolicyCfg(ObsGroup):
+        right_arm_joint_pos = ObsTerm(
+            func=base_mdp.joint_pos_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=RIGHT_ARM_JOINTS, preserve_order=True)},
+        )
+        right_arm_joint_vel = ObsTerm(
+            func=base_mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=RIGHT_ARM_JOINTS, preserve_order=True)},
+        )
+        right_hand_joint_pos = ObsTerm(
+            func=base_mdp.joint_pos,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=RIGHT_HAND_JOINTS, preserve_order=True)},
+        )
+        right_hand_joint_vel = ObsTerm(
+            func=base_mdp.joint_vel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=RIGHT_HAND_JOINTS, preserve_order=True)},
+        )
+        right_palm_pos = ObsTerm(
+            func=mdp.body_position,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link")},
+        )
+        right_palm_quat = ObsTerm(
+            func=mdp.body_orientation,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link")},
+        )
+        right_palm_velocity = ObsTerm(
+            func=mdp.body_velocity,
+            params={"asset_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link")},
+        )
+        object_pos = ObsTerm(func=mdp.object_position, params={"asset_cfg": SceneEntityCfg("object")})
+        object_quat = ObsTerm(func=mdp.object_orientation, params={"asset_cfg": SceneEntityCfg("object")})
+        object_velocity = ObsTerm(func=mdp.object_velocity, params={"asset_cfg": SceneEntityCfg("object")})
+        target_pos = ObsTerm(func=mdp.target_position, params={"target_pos": TARGET_POS})
+        object_relative_to_palm = ObsTerm(
+            func=mdp.object_relative_to_palm,
+            params={
+                "palm_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link"),
+                "object_cfg": SceneEntityCfg("object"),
+            },
+        )
+        target_relative_to_object = ObsTerm(
+            func=mdp.target_relative_to_object,
+            params={"target_pos": TARGET_POS, "object_cfg": SceneEntityCfg("object")},
+        )
+        grasp_state = ObsTerm(
+            func=mdp.grasp_observation,
+            params={
+                "table_top_z": TABLE_TOP_Z,
+                "palm_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link"),
+                "object_cfg": SceneEntityCfg("object"),
+                "term_name": "palm_ik",
+                "grip_index": 6,
+            },
+        )
         actions = ObsTerm(func=base_mdp.last_action)
 
         def __post_init__(self):
@@ -241,21 +432,55 @@ class RewardsCfg:
         },
     )
 
+    grip_near_object = RewTerm(
+        func=mdp.grip_near_object_reward,
+        weight=4.0,
+        params={
+            "std": 0.08,
+            "palm_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link"),
+            "object_cfg": SceneEntityCfg("object"),
+        },
+    )
+
+    early_grip = RewTerm(
+        func=mdp.early_grip_penalty,
+        weight=-2.0,
+        params={
+            "close_distance": 0.10,
+            "far_distance": 0.22,
+            "palm_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link"),
+            "object_cfg": SceneEntityCfg("object"),
+        },
+    )
+
     lift_object = RewTerm(
         func=mdp.lift_object_reward,
-        weight=8.0,
+        weight=10.0,
         params={"table_top_z": TABLE_TOP_Z, "lift_height": 0.08, "object_cfg": SceneEntityCfg("object")},
     )
 
     lift_progress = RewTerm(
         func=mdp.object_lift_progress_reward,
-        weight=4.0,
+        weight=6.0,
         params={"initial_height": CUBE_CENTER[2], "lift_height": 0.08, "object_cfg": SceneEntityCfg("object")},
+    )
+
+    hold_lifted_object = RewTerm(
+        func=mdp.hold_lifted_object_reward,
+        weight=12.0,
+        params={
+            "initial_height": CUBE_CENTER[2],
+            "lift_height": 0.08,
+            "palm_std": 0.12,
+            "speed_std": 1.0,
+            "palm_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link"),
+            "object_cfg": SceneEntityCfg("object"),
+        },
     )
 
     object_to_target = RewTerm(
         func=mdp.lifted_object_target_reward,
-        weight=10.0,
+        weight=8.0,
         params={
             "target_pos": TARGET_POS,
             "std": 0.25,
@@ -265,29 +490,105 @@ class RewardsCfg:
         },
     )
 
-    place_on_target = RewTerm(
-        func=mdp.placed_on_target_reward,
-        weight=30.0,
+    carry_to_target = RewTerm(
+        func=mdp.carried_object_target_reward,
+        weight=12.0,
         params={
             "target_pos": TARGET_POS,
-            "target_size": TARGET_SIZE,
+            "target_std": 0.25,
+            "palm_std": 0.12,
             "initial_height": CUBE_CENTER[2],
-            "height_tolerance": 0.04,
-            "max_speed": 0.25,
+            "min_lift": 0.03,
+            "palm_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link"),
             "object_cfg": SceneEntityCfg("object"),
         },
     )
 
-    success = RewTerm(
-        func=mdp.placed_on_target_reward,
-        weight=20.0,
+    release_on_target = RewTerm(
+        func=mdp.release_on_target_reward,
+        weight=12.0,
         params={
             "target_pos": TARGET_POS,
             "target_size": TARGET_SIZE,
             "initial_height": CUBE_CENTER[2],
             "height_tolerance": 0.04,
+            "minimum_height": TABLE_TOP_Z + 0.005,
+            "speed_std": 0.25,
+            "object_cfg": SceneEntityCfg("object"),
+            "palm_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link"),
+            "require_lift_and_grasp": True,
+            "min_lift": 0.03,
+            "carry_min_lift": 0.015,
+            "close_distance": 0.10,
+            "grip_close_threshold": 0.7,
+            "held_distance": 0.12,
+            "grasp_dwell_steps": 5,
+            "lift_dwell_steps": 5,
+            "carry_dwell_steps": 5,
+        },
+    )
+
+    release_away_from_target = RewTerm(
+        func=mdp.release_away_from_target_penalty,
+        weight=-4.0,
+        params={
+            "target_pos": TARGET_POS,
+            "target_size": TARGET_SIZE,
+            "initial_height": CUBE_CENTER[2],
+            "min_lift": 0.03,
+            "height_tolerance": 0.04,
+            "minimum_height": TABLE_TOP_Z + 0.005,
+            "object_cfg": SceneEntityCfg("object"),
+        },
+    )
+
+    place_on_target = RewTerm(
+        func=mdp.placed_on_target_reward,
+        weight=35.0,
+        params={
+            "target_pos": TARGET_POS,
+            "target_size": TARGET_SIZE,
+            "initial_height": CUBE_CENTER[2],
+            "height_tolerance": 0.04,
+            "minimum_height": TABLE_TOP_Z + 0.005,
             "max_speed": 0.25,
             "object_cfg": SceneEntityCfg("object"),
+            "palm_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link"),
+            "require_lift_and_grasp": True,
+            "min_lift": 0.03,
+            "carry_min_lift": 0.015,
+            "close_distance": 0.10,
+            "grip_close_threshold": 0.7,
+            "held_distance": 0.12,
+            "grasp_dwell_steps": 5,
+            "lift_dwell_steps": 5,
+            "carry_dwell_steps": 5,
+        },
+    )
+
+    success = RewTerm(
+        func=mdp.released_on_target_reward,
+        weight=25.0,
+        params={
+            "target_pos": TARGET_POS,
+            "target_size": TARGET_SIZE,
+            "initial_height": CUBE_CENTER[2],
+            "height_tolerance": 0.04,
+            "minimum_height": TABLE_TOP_Z + 0.005,
+            "max_speed": 0.25,
+            "grip_threshold": 0.2,
+            "min_palm_object_distance": 0.08,
+            "palm_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link"),
+            "object_cfg": SceneEntityCfg("object"),
+            "require_lift_and_grasp": True,
+            "min_lift": 0.03,
+            "carry_min_lift": 0.015,
+            "close_distance": 0.10,
+            "grip_close_threshold": 0.7,
+            "held_distance": 0.12,
+            "grasp_dwell_steps": 5,
+            "lift_dwell_steps": 5,
+            "carry_dwell_steps": 5,
         },
     )
 
@@ -312,14 +613,27 @@ class TerminationsCfg:
     )
 
     success = DoneTerm(
-        func=mdp.object_placed_on_target,
+        func=mdp.object_released_on_target,
         params={
             "target_pos": TARGET_POS,
             "target_size": TARGET_SIZE,
             "initial_height": CUBE_CENTER[2],
             "height_tolerance": 0.04,
+            "minimum_height": TABLE_TOP_Z + 0.005,
             "max_speed": 0.25,
+            "grip_threshold": 0.2,
+            "min_palm_object_distance": 0.08,
+            "palm_cfg": SceneEntityCfg("robot", body_names="hand3_v1_right_R_palm_link"),
             "object_cfg": SceneEntityCfg("object"),
+            "require_lift_and_grasp": True,
+            "min_lift": 0.03,
+            "carry_min_lift": 0.015,
+            "close_distance": 0.10,
+            "grip_close_threshold": 0.7,
+            "held_distance": 0.12,
+            "grasp_dwell_steps": 5,
+            "lift_dwell_steps": 5,
+            "carry_dwell_steps": 5,
         },
     )
 
@@ -382,3 +696,40 @@ class WalkerS2IKPickPlaceEnvCfg(WalkerS2PickPlaceEnvCfg):
                 if "shoulder" in name or "elbow" in name or "wrist" in name or name == "waist":
                     actuator_cfg.stiffness = 3000.0
                     actuator_cfg.damping = 180.0
+
+
+@configclass
+class WalkerS2StagedPickPlaceEnvCfg(WalkerS2IKPickPlaceEnvCfg):
+    """Walker S2 pick/place env with a staged primitive action interface."""
+
+    actions: StagedActionsCfg = StagedActionsCfg()
+
+
+@configclass
+class WalkerS2DirectArmPickPlaceEnvCfg(WalkerS2IKPickPlaceEnvCfg):
+    """Walker S2 pick/place env with direct right-arm + grip student actions."""
+
+    actions: DirectArmActionsCfg = DirectArmActionsCfg()
+
+
+@configclass
+class WalkerS2CartesianPickPlaceEnvCfg(WalkerS2IKPickPlaceEnvCfg):
+    """Walker S2 pick/place with object-agnostic Cartesian palm actions."""
+
+    actions: CartesianActionsCfg = CartesianActionsCfg()
+    observations: CartesianObservationsCfg = CartesianObservationsCfg()
+
+    def __post_init__(self):
+        super().__post_init__()
+        # Twenty policy decisions per second reduces correlated labels while
+        # retaining 200 Hz physics and stable joint servoing.
+        self.decimation = 10
+        self.sim.render_interval = self.decimation
+        self.episode_length_s = 30.0
+
+
+@configclass
+class WalkerS2ObjectRelativePickPlaceEnvCfg(WalkerS2CartesianPickPlaceEnvCfg):
+    """Cartesian pick/place with goals expressed relative to the current object."""
+
+    actions: ObjectRelativeCartesianActionsCfg = ObjectRelativeCartesianActionsCfg()
